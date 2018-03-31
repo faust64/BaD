@@ -1,0 +1,274 @@
+#!/bin/sh
+
+CHECK=false
+CLEANUP_TMPFS=false
+SETUP=false
+
+test -z "$LOG_PATH" && LOG_PATH=/var/tmp/BaD
+test -z "$TARGET_PATH" && TARGET_PATH=/home/bench
+test -z "$TARGET_DEVICE" && TARGET_DEVICE=/dev/sda2
+while test "$1"
+do
+    case "$1" in
+	-c|--check) CHECK=true ;;
+	-s|--setup) SETUP=true ;;
+	-l|--logpath) LOG_PATH="$2"; shift ;;
+	-d|--targetdir) TARGET_PATH="$2"; shift ;;
+	-e|--targetdevice) TARGET_DEVICE="$2"; shift ;;
+	-i|--fastinput) FAST_INPUT="$2"; shift ;;
+	-h|--help) cat <<EOF
+$0 usage:
+  $0 [-l /logs] |-d /test/dir ] [ -e /dev/block ] [ -i /dev/zero ]
+EOF
+	    exit 0
+	    ;;
+	*) echo discarding unrecognized option "$1" ;;
+    esac
+    shift
+done
+
+if ! test `id -u` = 0; then
+    echo must run as root >&2
+    exit 1
+fi
+test -d "$TARGET_PATH" || mkdir -p "$TARGET_PATH" 2>/dev/null
+test -d "$LOG_PATH" || mkdir -p "$LOG_PATH" 2>/dev/null
+if ! test -b "$TARGET_DEVICE"; then
+    echo "$TARGET_DEVICE is not a block device"
+    exit 1
+elif ! test -d "$TARGET_PATH" -a -d "$LOG_PATH"; then
+    echo "missing paths"
+    exit 1
+fi >&2
+
+if $SETUP; then
+    if test -x /bin/yum -o /usr/bin/yum; then
+	if ! yum -y install fio sysstat ioping; then
+	    echo failed installing fio and sysstat >&2
+	    echo in doubt, try installing epel-release >&2
+	    exit 1
+	fi
+    elif test -x /usr/bin/apt-get -o -x /bin/apt-get; then
+	if DEBIAN_FRONTEND=noninteractive apt-get install -y fio sysstat ioping; then
+	    echo failed installing fio and sysstat >&2
+	    exit 1
+	fi
+    else
+	echo unsupported platform
+	exit 1
+    fi
+    exit 0
+elif test -z "$FAST_INPUT"; then
+    echo trying to allocate 1240M of RAM mounting tmpfs
+    if mkdir -p /var/tmp/fast; then
+	if mount tmpfs -t tmpfs /var/tmp/fast -o size=1240M; then
+	    if dd if=/dev/urandom of=/var/tmp/fast/sample bs=1M count=1032; then
+		FAST_INPUT=/var/tmp/fast/sample
+	    else
+		echo failed generating fast input sample >&2
+	    fi
+	    CLEANUP_TMPFS=true
+	else
+	    echo failed mounting tmpfs serving tests with a fast and non-sequential input >&2
+	fi
+    else
+	echo failed creating fast input directory >&2
+    fi
+    if test -z "$FAST_INPUT"; then
+	echo falling back to /dev/zero, beware of predictibility/compressions/...
+	export FAST_INPUT=/dev/zero
+    fi
+fi
+CORE_COUNT=`awk 'BEGIN{c=0}/^[Pp]rocessor[ \t]/{c=c+1}END{print c;}' /proc/cpuinfo`
+MAX_THREADS=`expr $CORE_COUNT '*' 2 + 2`
+
+cleanup()
+{
+    for child in TOP IOSTAT1 IOSTAT2 VMSTAT SAR1 SAR2
+    do
+	eval childprocess=\$${child}_PID
+	if test "$childprocess"; then
+	    echo "shutting down $child: $childprocess"
+	    ( kill $childprocess || kill -9 $childprocess ) >/dev/null 2>&1
+	fi
+    done
+    if $CLEANUP_TMPFS; then
+	umount /var/tmp/fast
+    fi
+}
+
+trap cleanup EXIT
+
+if $CHECK; then
+    top -bHd 10 >"$LOG_PATH"/top-bHd 2>&1 &
+    TOP_PID=$!
+    iostat -Ntkdx 10 >"$LOG_PATH"/iostat-Ntkdx 2>&1 &
+    IOSTAT1_PID=$!
+    iostat -t -c -d 2 -x -m "$TARGET_DEVICE" >"$LOG_PATH"/iostat.dat 2>&1 &
+    IOSTAT2_PID=$!
+    vmstat -t 10 >"$LOG_PATH"/vmstat 2>&1 &
+    VMSTAT_PID=$!
+    sar -n DEV 10 >"$LOG_PATH"/sar-n 2>&1 &
+    SAR1_PID=$!
+    sar -B 10 >/tmp/sar-B 2>&1 &
+    SAR2_PID=$!
+fi
+
+# Device checks
+echo checking device "$TARGET_DEVICE"
+hdparm -Tt "$TARGET_DEVICE" >"$LOG_PATH"/hdparm-Tt 2>&1
+if ! xfs_info "$TARGET_DEVICE" >"$LOG_PATH"/xfs_info 2>&1; then
+    rm -f "$LOG_PATH"/xfs_info
+    if ! dumpe2fs "$TARGET_DEVICE" >"$LOG_PATH"/dumpe2fs 2>&1; then
+	rm -f "$LOG_PATH"/dumpe2fs
+    fi
+fi
+
+# bonnie, iozone?
+
+# Read
+echo reading from "$TARGET_DEVICE"
+time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=8k count=65536 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs8k-count65536-directfullblock1 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=8k count=65536 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs8k-count65536-directfullblock2 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=8k count=65536 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs8k-count65536-directfullblock3 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=4M count=128 skip=128 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs4M-count128-directfullblock1 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=4M count=128 skip=128 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs4M-count128-directfullblock2 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=4M count=128 skip=128 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs4M-count128-directfullblock3 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=1G skip=1 count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs1G-count1-directfullblock1 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=1G skip=1 count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs1G-count1-directfullblock2 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=1G skip=1 count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs1G-count1-directfullblock3 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-fast-bs1G-count1-directfullblock1 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-fast-bs1G-count1-directfullblock2 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-fast-bs1G-count1-directfullblock3 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+
+# Write
+echo writing to "$TARGET_PATH"
+time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-direct1 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-direct2 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-direct3 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-fdatasync1 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-fdatasync2 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-fdatasync3 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-direct1 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-direct2 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-direct3 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-fdatasync1 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-fdatasync2 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-fdatasync3 2>&1
+echo 3 >/proc/sys/vm/drop_caches
+rm -f "$TARGET_PATH"/dd-out
+
+# Small Files
+if test -d ./smallfiles; then
+    echo files and directories generation to "$TARGET_PATH"
+    for thread_count in `seq 2 $MAX_THREAD`
+    do
+	for sample_size in 128 256 1024 2048 4096 10240 102400 1024000
+	do
+	    time ./smallfile/smallfile_cli.py --top "$TARGET_PATH" --response-times Y --fsync Y --file-size $sample_size --files 4096 --threads $thread_count >"$LOG_PATH"/smallfiles-${sample_size}-${thread_count} 2>&1
+	done
+    done
+fi
+
+# FIO
+if test -x /bin/fio -o -x /usr/bin/fio; then
+    echo FIO on "$TARGET_PATH"
+    fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --filename="$TARGET_PATH"/fio-out --bs=4k --iodepth=64 --size=4G --readwrite=randrw --rwmixread=75 >"$LOG_PATH"/fio-randrw1 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+    fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --filename="$TARGET_PATH"/fio-out --bs=4k --iodepth=64 --size=4G --readwrite=randrw --rwmixread=75 >"$LOG_PATH"/fio-randrw2 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+    fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --filename="$TARGET_PATH"/fio-out --bs=4k --iodepth=64 --size=4G --readwrite=randrw --rwmixread=75 >"$LOG_PATH"/fio-randrw3 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+    fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --filename="$TARGET_PATH"/fio-out --bs=4k --iodepth=64 --size=4G --readwrite=randwrite >"$LOG_PATH"/fio-randwrite1 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+    fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --filename="$TARGET_PATH"/fio-out --bs=4k --iodepth=64 --size=4G --readwrite=randwrite >"$LOG_PATH"/fio-randwrite2 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+    fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --filename="$TARGET_PATH"/fio-out --bs=4k --iodepth=64 --size=4G --readwrite=randwrite >"$LOG_PATH"/fio-randwrite3 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+    rm -f "$TARGET_PATH"/fio-out
+    cat <<EOF >4threads.fio
+
+[global]
+rw=randread
+size=256m
+directory=$TARGET_PATH/datafio
+ioengine=libaio
+iodepth=4
+invalidate=1
+direct=1
+
+[bgwriter]
+rw=randwrite
+iodepth=32
+
+[queryA]
+iodepth=1
+ioengine=mmap
+direct=0
+thinktime=3
+
+[queryB]
+iodepth=1
+ioengine=mmap
+direct=0
+thinktime=5
+
+[bgupdater]
+rw=randrw
+iodepth=16
+thinktime=40
+size=32m
+EOF
+    mkdir "$TARGET_PATH"/datafio
+    fio 4threads.fio >"$LOG_PATH"/fio-4threads1 2>&1
+    rm -rf "$TARGET_PATH"/datafio
+    echo 3 >/proc/sys/vm/drop_caches
+    mkdir "$TARGET_PATH"/datafio
+    fio 4threads.fio >"$LOG_PATH"/fio-4threads2 2>&1
+    rm -rf "$TARGET_PATH"/datafio
+    echo 3 >/proc/sys/vm/drop_caches
+    mkdir "$TARGET_PATH"/datafio
+    fio 4threads.fio >"$LOG_PATH"/fio-4threads3 2>&1
+    rm -rf "$TARGET_PATH"/datafio ./4threads.fio
+    echo 3 >/proc/sys/vm/drop_caches
+fi
+
+# Diskperfs
+if test -d diskperf_utils; then
+    echo reading from "$TARGET_DEVICE"
+    timeout 30 python ./diskperf_utils/test_diskread.py "$TARGET_DEVICE" --random -m 30 -f "$LOG_PATH"/diskperf-random.plot
+    echo 3 >/proc/sys/vm/drop_caches
+    timeout 30 python ./diskperf_utils/test_diskread.py "$TARGET_DEVICE" -m 30 -f "$LOG_PATH"/diskperf.plot
+    echo 3 >/proc/sys/vm/drop_caches
+fi
+
+# IOping
+if test -x /usr/bin/ioping -o /bin/ioping; then
+   ioping -c 100 "$TARGET_PATH" >"$LOG_PATH"/ioping 2>&1
+fi
+
+ps axww | grep -E '(iotop|vmstat|sar|iostat|top) '
+exit 0

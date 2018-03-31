@@ -1,0 +1,88 @@
+#/bin/sh
+
+SETUP=false
+LOG_PATH=/var/tmp/BaD
+
+test -z "$LOG_PATH" && LOG_PATH=/var/tmp/BaD
+while test "$1"
+do
+    case "$1" in
+	-s|--setup) SETUP=true ;;
+	-l|--logpath) LOG_PATH="$2"; shift ;;
+	-h|--help) cat <<EOF
+$0 usage:
+  $0 [-l /logs]
+EOF
+	    exit 0
+	    ;;
+	*) echo discarding unrecognized option "$1" ;;
+    esac
+    shift
+done
+
+if $SETUP; then
+    if test -x /bin/yum -o /usr/bin/yum; then
+	if ! yum -y install gnuplot; then
+	    echo failed installing gnuplot >&2
+	    exit 1
+	fi
+    elif test -x /usr/bin/apt-get -o -x /bin/apt-get; then
+	if DEBIAN_FRONTEND=noninteractive apt-get install -y gnuplot; then
+	    echo failed installing gnuplot >&2
+	    exit 1
+	fi
+    else
+	echo unsupported platform
+	exit 1
+    fi
+    exit 0
+fi
+
+awk '{print $1}' "$LOG_PATH"/blocks-usage.dat | sort -u | \
+    while read devname
+    do
+	if ! test -s "$LOG_PATH/blocks-$devname-usage.dat"; then
+	    echo skipping "$devname"
+	    continue
+	fi
+	gnuplot <<EOF
+set title "$devname overall usage"
+set term "png"
+set output "$LOG_PATH/blocks-$devname-usage.png"
+plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:14 title "util" with filledcurve
+EOF
+	gnuplot <<EOF
+set title "$devname requests"
+set term "png"
+set output "$LOG_PATH/blocks-$devname-requests.png"
+plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:2 title "read request merge", \
+     "$LOG_PATH/blocks-$devname-usage.dat" using 1:3 title "write request merge", \
+     "$LOG_PATH/blocks-$devname-usage.dat" using 1:4 title "read requests", \
+     "$LOG_PATH/blocks-$devname-usage.dat" using 1:5 title "write requests"
+EOF
+	gnuplot <<EOF
+set title "$devname response times"
+set term "png"
+set output "$LOG_PATH/blocks-$devname-times.png"
+plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:10 title "average request processing time", \
+     "$LOG_PATH/blocks-$devname-usage.dat" using 1:11 title "average read request processing time", \
+     "$LOG_PATH/blocks-$devname-usage.dat" using 1:12 title "average write request processing time", \
+     "$LOG_PATH/blocks-$devname-usage.dat" using 1:13 title "average service time"
+EOF
+	gnuplot <<EOF
+set title "$devname throughputs"
+set term "png"
+set output "$LOG_PATH/blocks-$devname-speed.png"
+plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:6 title "read MB/s", \
+     "$LOG_PATH/blocks-$devname-usage.dat" using 1:7 title "written MB/s"
+EOF
+	gnuplot <<EOF
+set title "$devname request sizes"
+set term "png"
+set output "$LOG_PATH/blocks-$devname-rqsizes.png"
+plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:8 title "average request size", \
+     "$LOG_PATH/blocks-$devname-usage.dat" using 1:9 title "average queue size"
+EOF
+    done
+
+exit $?
