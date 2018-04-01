@@ -1,8 +1,8 @@
 #!/bin/sh
 
-CHECK=false
 CLEANUP_TMPFS=false
 SETUP=false
+RETRY_SUFFIXES="`seq 1 5`"
 
 test -z "$LOG_PATH" && LOG_PATH=/var/tmp/BaD
 test -z "$TARGET_PATH" && TARGET_PATH=/home/bench
@@ -10,15 +10,15 @@ test -z "$TARGET_DEVICE" && TARGET_DEVICE=/dev/sda2
 while test "$1"
 do
     case "$1" in
-	-c|--check) CHECK=true ;;
 	-s|--setup) SETUP=true ;;
 	-l|--logpath) LOG_PATH="$2"; shift ;;
 	-d|--targetdir) TARGET_PATH="$2"; shift ;;
 	-e|--targetdevice) TARGET_DEVICE="$2"; shift ;;
 	-i|--fastinput) FAST_INPUT="$2"; shift ;;
+	-r|--retry) RETRY_SUFFIXES="`seq 1 '$2'`"; shift ;;
 	-h|--help) cat <<EOF
 $0 usage:
-  $0 [-l /logs] |-d /test/dir ] [ -e /dev/block ] [ -i /dev/zero ]
+  $0 [-l /logs] |-d /test/dir ] [ -e /dev/block ] [ -i /dev/zero ] [ -r 1..n ]
 EOF
 	    exit 0
 	    ;;
@@ -84,7 +84,7 @@ MAX_THREADS=`expr $CORE_COUNT '*' 2 + 2`
 
 cleanup()
 {
-    for child in TOP IOSTAT1 IOSTAT2 VMSTAT SAR1 SAR2
+    for child in TOP IOPING IOSTAT1 IOSTAT2 VMSTAT SAR1 SAR2
     do
 	eval childprocess=\$${child}_PID
 	if test "$childprocess"; then
@@ -99,20 +99,20 @@ cleanup()
 
 trap cleanup EXIT
 
-if $CHECK; then
-    top -bHd 10 >"$LOG_PATH"/top-bHd 2>&1 &
-    TOP_PID=$!
-    iostat -Ntkdx 10 >"$LOG_PATH"/iostat-Ntkdx 2>&1 &
-    IOSTAT1_PID=$!
-    iostat -t -c -d 2 -x -m "$TARGET_DEVICE" >"$LOG_PATH"/iostat.dat 2>&1 &
-    IOSTAT2_PID=$!
-    vmstat -t 10 >"$LOG_PATH"/vmstat 2>&1 &
-    VMSTAT_PID=$!
-    sar -n DEV 10 >"$LOG_PATH"/sar-n 2>&1 &
-    SAR1_PID=$!
-    sar -B 10 >/tmp/sar-B 2>&1 &
-    SAR2_PID=$!
-fi
+top -bHd 10 >"$LOG_PATH"/top-bHd 2>&1 &
+TOP_PID=$!
+iostat -Ntkdx 10 >"$LOG_PATH"/iostat-Ntkdx 2>&1 &
+IOSTAT1_PID=$!
+iostat -t -c -d 2 -x -m "$TARGET_DEVICE" >"$LOG_PATH"/iostat.dat 2>&1 &
+IOSTAT2_PID=$!
+vmstat -t 10 >"$LOG_PATH"/vmstat 2>&1 &
+VMSTAT_PID=$!
+sar -n DEV 10 >"$LOG_PATH"/sar-n 2>&1 &
+SAR1_PID=$!
+sar -B 10 >/tmp/sar-B 2>&1 &
+SAR2_PID=$!
+ioping "$TARGET_PATH" >"$LOG_PATH"/ioping 2>&1 &
+IOPING_PID=$!
 
 # Device checks
 echo checking device "$TARGET_DEVICE"
@@ -128,57 +128,59 @@ fi
 
 # Read
 echo reading from "$TARGET_DEVICE"
-time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=8k count=65536 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs8k-count65536-directfullblock1 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=8k count=65536 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs8k-count65536-directfullblock2 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=8k count=65536 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs8k-count65536-directfullblock3 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=4M count=128 skip=128 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs4M-count128-directfullblock1 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=4M count=128 skip=128 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs4M-count128-directfullblock2 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=4M count=128 skip=128 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs4M-count128-directfullblock3 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=1G skip=1 count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs1G-count1-directfullblock1 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=1G skip=1 count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs1G-count1-directfullblock2 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=1G skip=1 count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs1G-count1-directfullblock3 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=fullblock ; sync ) >"$LOG_PATH"/dd-read-fast-bs1G-count1-fullblock1 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=fullblock ; sync ) >"$LOG_PATH"/dd-read-fast-bs1G-count1-fullblock2 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=fullblock ; sync ) >"$LOG_PATH"/dd-read-fast-bs1G-count1-fullblock3 2>&1
-echo 3 >/proc/sys/vm/drop_caches
+for i in $RETRY_SUFFIXES
+do
+    time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=8k count=65536 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs8k-count65536-directfullblock$i 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+done
+for i in $RETRY_SUFFIXES
+do
+    time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=4M count=128 skip=128 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs4M-count128-directfullblock$i 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+done
+for i in $RETRY_SUFFIXES
+do
+    time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=1G skip=1 count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs1G-count1-directfullblock$i 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+done
+for i in $RETRY_SUFFIXES
+do
+    time ( dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=fullblock ; sync ) >"$LOG_PATH"/dd-read-fast-bs1G-count1-fullblock$i 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+done
 
 # Write
 echo writing to "$TARGET_PATH"
-time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-direct1 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-direct2 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-direct3 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-fdatasync1 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-fdatasync2 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-fdatasync3 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-direct1 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-direct2 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-direct3 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-fdatasync1 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-fdatasync2 2>&1
-echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-fdatasync3 2>&1
-echo 3 >/proc/sys/vm/drop_caches
+for i in $RETRY_SUFFIXES
+do
+    time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-direct$i 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+done
+for i in $RETRY_SUFFIXES
+do
+    time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-fdatasync$i 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+done
+for i in $RETRY_SUFFIXES
+do
+    time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-direct$i 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+done
+for i in $RETRY_SUFFIXES
+do
+    time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-fdatasync$i 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+done
+for i in $RETRY_SUFFIXES
+do
+    time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=8k count=65536 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs8k-count65536-direct$i 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+done
+for i in $RETRY_SUFFIXES
+do
+    time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=8k count=65536 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs8k-count65536-fdatasync$i 2>&1
+    echo 3 >/proc/sys/vm/drop_caches
+done
 rm -f "$TARGET_PATH"/dd-out
 
 # Small Files
@@ -196,19 +198,16 @@ fi
 # FIO
 if test -x /bin/fio -o -x /usr/bin/fio; then
     echo FIO on "$TARGET_PATH"
-    fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --filename="$TARGET_PATH"/fio-out --bs=4k --iodepth=64 --size=4G --readwrite=randrw --rwmixread=75 >"$LOG_PATH"/fio-randrw1 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
-    fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --filename="$TARGET_PATH"/fio-out --bs=4k --iodepth=64 --size=4G --readwrite=randrw --rwmixread=75 >"$LOG_PATH"/fio-randrw2 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
-    fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --filename="$TARGET_PATH"/fio-out --bs=4k --iodepth=64 --size=4G --readwrite=randrw --rwmixread=75 >"$LOG_PATH"/fio-randrw3 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
-    fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --filename="$TARGET_PATH"/fio-out --bs=4k --iodepth=64 --size=4G --readwrite=randwrite >"$LOG_PATH"/fio-randwrite1 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
-    fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --filename="$TARGET_PATH"/fio-out --bs=4k --iodepth=64 --size=4G --readwrite=randwrite >"$LOG_PATH"/fio-randwrite2 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
-    fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --filename="$TARGET_PATH"/fio-out --bs=4k --iodepth=64 --size=4G --readwrite=randwrite >"$LOG_PATH"/fio-randwrite3 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
-    rm -f "$TARGET_PATH"/fio-out
+    for i in $RETRY_SUFFIXES
+    do
+	fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --filename="$TARGET_PATH"/fio-out --bs=4k --iodepth=64 --size=4G --readwrite=randrw --rwmixread=75 >"$LOG_PATH"/fio-randrw$i 2>&1
+	echo 3 >/proc/sys/vm/drop_caches
+    done
+    for i in $RETRY_SUFFIXES
+    do
+	fio --randrepeat=1 --ioengine=libaio --direct=1 --gtod_reduce=1 --name=test --filename="$TARGET_PATH"/fio-out --bs=4k --iodepth=64 --size=4G --readwrite=randwrite >"$LOG_PATH"/fio-randwrite$i 2>&1
+	echo 3 >/proc/sys/vm/drop_caches
+    done
     cat <<EOF >4threads.fio
 
 [global]
@@ -242,18 +241,15 @@ iodepth=16
 thinktime=40
 size=32m
 EOF
-    mkdir "$TARGET_PATH"/datafio
-    fio 4threads.fio >"$LOG_PATH"/fio-4threads1 2>&1
-    rm -rf "$TARGET_PATH"/datafio
-    echo 3 >/proc/sys/vm/drop_caches
-    mkdir "$TARGET_PATH"/datafio
-    fio 4threads.fio >"$LOG_PATH"/fio-4threads2 2>&1
-    rm -rf "$TARGET_PATH"/datafio
-    echo 3 >/proc/sys/vm/drop_caches
-    mkdir "$TARGET_PATH"/datafio
-    fio 4threads.fio >"$LOG_PATH"/fio-4threads3 2>&1
-    rm -rf "$TARGET_PATH"/datafio ./4threads.fio
-    echo 3 >/proc/sys/vm/drop_caches
+    rm -rf "$TARGET_PATH"/datafio "$TARGET_PATH"/fio-out
+    for i in $RETRY_SUFFIXES
+    do
+	mkdir "$TARGET_PATH"/datafio
+	fio 4threads.fio >"$LOG_PATH"/fio-4threads$i 2>&1
+	rm -rf "$TARGET_PATH"/datafio
+	echo 3 >/proc/sys/vm/drop_caches
+    done
+    rm -f 4threads.fio
 fi
 
 # Diskperfs
@@ -265,10 +261,5 @@ if test -d diskperf_utils; then
     echo 3 >/proc/sys/vm/drop_caches
 fi
 
-# IOping
-if test -x /usr/bin/ioping -o /bin/ioping; then
-   ioping -c 100 "$TARGET_PATH" >"$LOG_PATH"/ioping 2>&1
-fi
-
-ps axww | grep -E '(iotop|vmstat|sar|iostat|top) '
+ps axww | grep -E '(iotop|ioping|vmstat|sar|iostat|top) '
 exit 0

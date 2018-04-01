@@ -47,6 +47,70 @@ set output "$LOG_PATH/ioping.png"
 plot "$LOG_PATH/ioping.dat" using 1:2 title "response time un µs" with lines lt 1
 EOF
 fi
+TMPFILE=/var/tmp/gnuplot.input.$$
+GNUPLOT_COLORS="red blue orange violet yellow black pink cyan"
+echo -n "plot " >$TMPFILE
+lastbsize=`ls "$LOG_PATH"/dd-read-block-bs*-* | sed 's|.*read-block-bs\([^-]*\)-.*|\1|' | sort -u | tail -1`
+ls "$LOG_PATH"/dd-read-block-bs*-* | sed 's|.*read-block-bs\([^-]*\)-.*|\1|' | sort -u | while read blocksize
+    do
+	test -z "$idx" && idx=1 || idx=`expr $idx + 1`
+	test $idx -ge `echo $GNUPLOT_COLORS | awk -F' ' '{print NF}'` && idx=1
+	color=`echo $GNUPLOT_COLORS | cut -d' ' -f$idx`
+        if test "$blocksize" = "$lastbsize"; then
+	    echo "\"$LOG_PATH/dd-read-block-bs$blocksize.dat\" using 1:2 title \"read blocksize $blocksize\" with lines lt rgb \"$color\""
+	else
+            echo "\"$LOG_PATH/dd-read-block-bs$blocksize.dat\" using 1:2 title \"read blocksize $blocksize\" with lines lt rgb \"$color\", \\"
+	fi
+    done >>$TMPFILE
+plotdata=`cat $TMPFILE`
+#FIXME: devname could be unset due to previous conditional?
+gnuplot <<EOF
+set title "$devname read throughputs"
+set term "png"
+set output "$LOG_PATH/dd-read-block.png"
+$plotdata
+EOF
+echo -n "plot " >$TMPFILE
+lastbsize=`ls "$LOG_PATH"/dd-write-bs*-*direct* | sed 's|.*write-bs\([^-]*\)-.*|\1|' | sort -u | tail -1`
+ls "$LOG_PATH"/dd-write-bs*-*direct* | sed 's|.*write-bs\([^-]*\)-.*|\1|' | sort -u | while read blocksize
+    do
+	test -z "$idx" && idx=1 || idx=`expr $idx + 1`
+	test $idx -ge `echo $GNUPLOT_COLORS | awk -F' ' '{print NF}'` && idx=1
+	color=`echo $GNUPLOT_COLORS | cut -d' ' -f$idx`
+        if test "$blocksize" = "$lastbsize"; then
+	    echo "\"$LOG_PATH/dd-write-direct-bs$blocksize.dat\" using 1:2 title \"write blocksize $blocksize\" with lines lt rgb \"$color\""
+	else
+            echo "\"$LOG_PATH/dd-write-direct-bs$blocksize.dat\" using 1:2 title \"write blocksize $blocksize\" with lines lt rgb \"$color\", \\"
+	fi
+    done >>$TMPFILE
+plotdata=`cat $TMPFILE`
+gnuplot <<EOF
+set title "$devname write throughputs (direct)"
+set term "png"
+set output "$LOG_PATH/dd-write-direct.png"
+$plotdata
+EOF
+echo -n "plot " >$TMPFILE
+lastbsize=`ls "$LOG_PATH"/dd-write-bs*-*fdatasync* | sed 's|.*write-bs\([^-]*\)-.*|\1|' | sort -u | tail -1`
+ls "$LOG_PATH"/dd-write-bs*-*fdatasync* | sed 's|.*write-bs\([^-]*\)-.*|\1|' | sort -u | while read blocksize
+    do
+	test -z "$idx" && idx=1 || idx=`expr $idx + 1`
+	test $idx -ge `echo $GNUPLOT_COLORS | awk -F' ' '{print NF}'` && idx=1
+	color=`echo $GNUPLOT_COLORS | cut -d' ' -f$idx`
+        if test "$blocksize" = "$lastbsize"; then
+	    echo "\"$LOG_PATH/dd-write-fdatasync-bs$blocksize.dat\" using 1:2 title \"write blocksize $blocksize\" with lines lt rgb \"$color\""
+	else
+            echo "\"$LOG_PATH/dd-write-fdatasync-bs$blocksize.dat\" using 1:2 title \"write blocksize $blocksize\" with lines lt rgb \"$color\", \\"
+	fi
+    done >>$TMPFILE
+plotdata=`cat $TMPFILE`
+gnuplot <<EOF
+set title "$devname write throughputs (fdatasync)"
+set term "png"
+set output "$LOG_PATH/dd-write-fdatasync.png"
+$plotdata
+EOF
+rm -f $TMPFILE
 awk '{print $1}' "$LOG_PATH"/blocks-usage.dat | sort -u | \
     while read devname
     do

@@ -1,28 +1,5 @@
-ioping:
-	awk '/request=/' logs-random/ioping | \
-	    sed 's|.*request=\([0-9]*\) time=\([0-9\.]*\) \(..\)[ ]*\(.*\)$$|\1 \2 \3 \4|' | \
-	    while read req time unit oth; \
-		do \
-		    val= ; \
-		    if test "$$unit" = ms; then \
-			if echo $$time | grep '\.' >/dev/null; then \
-			    val=`echo $${time}0 | sed 's|\.\([0-9][0-9]0\)|\1|'`; \
-			else \
-			    val=$${time}000; \
-			fi; \
-		    elif test "$$unit" = us; then \
-			val=$$time; \
-		    fi; \
-		    if test -z "$$val"; then \
-			echo "unsupported unit $$unit, discarding data $$req ($$time)" >&2; \
-			continue; \
-		    fi; \
-		    echo $$req $$val; \
-		done >logs-random/ioping.dat
-
-
 run-zero:
-	./bench_a_disk -c -i /dev/zero -l ./logs-zero
+	./bench_a_disk -i /dev/zero -l ./logs-zero
 
 graph-zero:
 	ROW=1; grep -A1 avg-cpu: logs-zero/iostat.dat | grep '^[ \t]*[0-9]' | \
@@ -66,10 +43,25 @@ graph-zero:
 		    fi; \
 		    echo $$req $$val; \
 		done >logs-zero/ioping.dat
+	ls logs-zero/dd-read-block-bs*-* | sed 's|.*read-block-bs\([^-]*\)-.*|\1|' | sort -u | \
+	    while read blocksize; \
+		do \
+		    awk 'BEGIN{c=1}/copied/{print c " " $$8;c=c+1;}' logs-zero/dd-read-block-bs$$blocksize-* >logs-zero/dd-read-block-bs$$blocksize.dat; \
+		done
+	ls logs-zero/dd-write-bs*-*direct* | sed 's|.*write-bs\([^-]*\)-.*|\1|' | sort -u | \
+	    while read blocksize; \
+		do \
+		    awk 'BEGIN{c=1}/copied/{print c " " $$8;c=c+1;}' logs-zero/dd-write-bs$$blocksize-*direct* >logs-zero/dd-write-direct-bs$$blocksize.dat; \
+		done
+	ls logs-zero/dd-write-bs*-*fdatasync* | sed 's|.*write-bs\([^-]*\)-.*|\1|' | sort -u | \
+	    while read blocksize; \
+		do \
+		    awk 'BEGIN{c=1}/copied/{print c " " $$8;c=c+1;}' logs-zero/dd-write-bs$$blocksize-*fdatasync* >logs-zero/dd-write-fdatasync-bs$$blocksize.dat; \
+		done
 	./plots -l ./logs-zero
 
 run-random:
-	./bench_a_disk -c -l ./logs-random
+	./bench_a_disk -l ./logs-random
 
 graph-random:
 	ROW=1; grep -A1 avg-cpu: logs-random/iostat.dat | grep '^[ \t]*[0-9]' | \
@@ -113,6 +105,21 @@ graph-random:
 		    fi; \
 		    echo $$req $$val; \
 		done >logs-random/ioping.dat
+	ls logs-random/dd-read-block-bs*-* | sed 's|.*read-block-bs\([^-]*\)-.*|\1|' | sort -u | \
+	    while read blocksize; \
+		do \
+		    awk 'BEGIN{c=1}/copied/{print c " " $$8;c=c+1;}' logs-random/dd-read-block-bs$$blocksize-* >logs-random/dd-read-block-bs$$blocksize.dat; \
+		done
+	ls logs-random/dd-write-bs*-*direct* | sed 's|.*write-bs\([^-]*\)-.*|\1|' | sort -u | \
+	    while read blocksize; \
+		do \
+		    awk 'BEGIN{c=1}/copied/{print c " " $$8;c=c+1;}' logs-random/dd-write-bs$$blocksize-*direct* >logs-random/dd-write-direct-bs$$blocksize.dat; \
+		done
+	ls logs-random/dd-write-bs*-*fdatasync* | sed 's|.*write-bs\([^-]*\)-.*|\1|' | sort -u | \
+	    while read blocksize; \
+		do \
+		    awk 'BEGIN{c=1}/copied/{print c " " $$8;c=c+1;}' logs-random/dd-write-bs$$blocksize-*fdatasync* >logs-random/dd-write-fdatasync-bs$$blocksize.dat; \
+		done
 	./plots -l ./logs-random
 
 reset:
