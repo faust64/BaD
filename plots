@@ -38,6 +38,15 @@ if $SETUP; then
     exit 0
 fi
 
+if test -s "$LOG_PATH/ioping.dat"; then
+    devname=`awk '/ ioping statistics/{print $2" ("$4}' "$LOG_PATH"/ioping`
+    gnuplot <<EOF
+set title "$devname IO ping"
+set term "png"
+set output "$LOG_PATH/ioping.png"
+plot "$LOG_PATH/ioping.dat" using 1:2 title "response time un µs" with lines lt 1
+EOF
+fi
 awk '{print $1}' "$LOG_PATH"/blocks-usage.dat | sort -u | \
     while read devname
     do

@@ -1,3 +1,26 @@
+ioping:
+	awk '/request=/' logs-random/ioping | \
+	    sed 's|.*request=\([0-9]*\) time=\([0-9\.]*\) \(..\)[ ]*\(.*\)$$|\1 \2 \3 \4|' | \
+	    while read req time unit oth; \
+		do \
+		    val= ; \
+		    if test "$$unit" = ms; then \
+			if echo $$time | grep '\.' >/dev/null; then \
+			    val=`echo $${time}0 | sed 's|\.\([0-9][0-9]0\)|\1|'`; \
+			else \
+			    val=$${time}000; \
+			fi; \
+		    elif test "$$unit" = us; then \
+			val=$$time; \
+		    fi; \
+		    if test -z "$$val"; then \
+			echo "unsupported unit $$unit, discarding data $$req ($$time)" >&2; \
+			continue; \
+		    fi; \
+		    echo $$req $$val; \
+		done >logs-random/ioping.dat
+
+
 run-zero:
 	./bench_a_disk -c -i /dev/zero -l ./logs-zero
 
@@ -23,6 +46,26 @@ graph-zero:
 				ROW=`expr $$ROW + 1`; \
 			    done >logs-zero/blocks-$$devname-usage.dat; \
 		done
+	awk '/request=/' logs-zero/ioping | \
+	    sed 's|.*request=\([0-9]*\) time=\([0-9\.]*\) \(..\)[ ]*\(.*\)$$|\1 \2 \3 \4|' | \
+	    while read req time unit oth; \
+		do \
+		    val= ; \
+		    if test "$$unit" = ms; then \
+			if echo $$time | grep '\.' >/dev/null; then \
+			    val=`echo $${time}0 | sed 's|\.\([0-9][0-9]0\)|\1|'`; \
+			else \
+			    val=$${time}000; \
+			fi; \
+		    elif test "$$unit" = us; then \
+			val=$$time; \
+		    fi; \
+		    if test -z "$$val"; then \
+			echo "unsupported unit $$unit, discarding data $$req ($$time)" >&2; \
+			continue; \
+		    fi; \
+		    echo $$req $$val; \
+		done >logs-zero/ioping.dat
 	./plots -l ./logs-zero
 
 run-random:
@@ -50,6 +93,26 @@ graph-random:
 				ROW=`expr $$ROW + 1`; \
 			    done >logs-random/blocks-$$devname-usage.dat; \
 		done
+	awk '/request=/' logs-random/ioping | \
+	    sed 's|.*request=\([0-9]*\) time=\([0-9\.]*\) \(..\)[ ]*\(.*\)$$|\1 \2 \3 \4|' | \
+	    while read req time unit oth; \
+		do \
+		    val= ; \
+		    if test "$$unit" = ms; then \
+			if echo $$time | grep '\.' >/dev/null; then \
+			    val=`echo $${time}0 | sed 's|\.\([0-9][0-9]0\)|\1|'`; \
+			else \
+			    val=$${time}000; \
+			fi; \
+		    elif test "$$unit" = us; then \
+			val=$$time; \
+		    fi; \
+		    if test -z "$$val"; then \
+			echo "unsupported unit $$unit, discarding data $$req ($$time)" >&2; \
+			continue; \
+		    fi; \
+		    echo $$req $$val; \
+		done >logs-random/ioping.dat
 	./plots -l ./logs-random
 
 reset:
