@@ -146,11 +146,11 @@ time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=1G skip=1 count=1 iflag=direct,ful
 echo 3 >/proc/sys/vm/drop_caches
 time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=1G skip=1 count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs1G-count1-directfullblock3 2>&1
 echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-fast-bs1G-count1-directfullblock1 2>&1
+time ( dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=fullblock ; sync ) >"$LOG_PATH"/dd-read-fast-bs1G-count1-fullblock1 2>&1
 echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-fast-bs1G-count1-directfullblock2 2>&1
+time ( dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=fullblock ; sync ) >"$LOG_PATH"/dd-read-fast-bs1G-count1-fullblock2 2>&1
 echo 3 >/proc/sys/vm/drop_caches
-time ( dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-fast-bs1G-count1-directfullblock3 2>&1
+time ( dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=fullblock ; sync ) >"$LOG_PATH"/dd-read-fast-bs1G-count1-fullblock3 2>&1
 echo 3 >/proc/sys/vm/drop_caches
 
 # Write
