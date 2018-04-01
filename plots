@@ -82,8 +82,8 @@ EOF
 set title "$devname throughputs"
 set term "png"
 set output "$LOG_PATH/blocks-$devname-speed.png"
-plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:6 title "read MB/s", \
-     "$LOG_PATH/blocks-$devname-usage.dat" using 1:7 title "written MB/s"
+plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:6 title "read MB/s" with lines lt rgb "red", \
+     "$LOG_PATH/blocks-$devname-usage.dat" using 1:7 title "written MB/s" with lines lt rgb "blue"
 EOF
 	gnuplot <<EOF
 set title "$devname request sizes"
