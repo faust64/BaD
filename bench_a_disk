@@ -42,14 +42,14 @@ elif ! test -d "$TARGET_PATH" -a -d "$LOG_PATH"; then
 fi >&2
 
 if $SETUP; then
-    if test -x /bin/yum -o /usr/bin/yum; then
+    if test -x /bin/yum -o -x /usr/bin/yum; then
 	if ! yum -y install fio sysstat ioping; then
 	    echo failed installing fio and sysstat >&2
 	    echo in doubt, try installing epel-release >&2
 	    exit 1
 	fi
     elif test -x /usr/bin/apt-get -o -x /bin/apt-get; then
-	if DEBIAN_FRONTEND=noninteractive apt-get install -y fio sysstat ioping; then
+	if ! DEBIAN_FRONTEND=noninteractive apt-get install -y fio sysstat ioping; then
 	    echo failed installing fio and sysstat >&2
 	    exit 1
 	fi
@@ -130,56 +130,56 @@ fi
 echo reading from "$TARGET_DEVICE"
 for i in $RETRY_SUFFIXES
 do
-    time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=8k count=65536 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs8k-count65536-directfullblock$i 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
+    dd "if=$TARGET_DEVICE" of=/dev/null bs=8k count=65536 iflag=direct,fullblock >"$LOG_PATH"/dd-read-block-bs8k-count65536-directfullblock$i 2>&1
+    sync ; echo 3 >/proc/sys/vm/drop_caches
 done
 for i in $RETRY_SUFFIXES
 do
-    time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=4M count=128 skip=128 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs4M-count128-directfullblock$i 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
+    dd "if=$TARGET_DEVICE" of=/dev/null bs=4M count=128 skip=128 iflag=direct,fullblock >"$LOG_PATH"/dd-read-block-bs4M-count128-directfullblock$i 2>&1
+    sync ; echo 3 >/proc/sys/vm/drop_caches
 done
 for i in $RETRY_SUFFIXES
 do
-    time ( dd "if=$TARGET_DEVICE" of=/dev/null bs=1G skip=1 count=1 iflag=direct,fullblock ; sync ) >"$LOG_PATH"/dd-read-block-bs1G-count1-directfullblock$i 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
+    dd "if=$TARGET_DEVICE" of=/dev/null bs=1G skip=1 count=1 iflag=direct,fullblock >"$LOG_PATH"/dd-read-block-bs1G-count1-directfullblock$i 2>&1
+    sync ; echo 3 >/proc/sys/vm/drop_caches
 done
 for i in $RETRY_SUFFIXES
 do
-    time ( dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=fullblock ; sync ) >"$LOG_PATH"/dd-read-fast-bs1G-count1-fullblock$i 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
+    dd "if=$FAST_INPUT" of=/dev/null bs=1G count=1 iflag=fullblock >"$LOG_PATH"/dd-read-fast-bs1G-count1-fullblock$i 2>&1
+    sync ; echo 3 >/proc/sys/vm/drop_caches
 done
 
 # Write
 echo writing to "$TARGET_PATH"
 for i in $RETRY_SUFFIXES
 do
-    time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-direct$i 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
+    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 oflag=direct >"$LOG_PATH"/dd-write-bs1G-count1-direct$i 2>&1
+    sync ; echo 3 >/proc/sys/vm/drop_caches
 done
 for i in $RETRY_SUFFIXES
 do
-    time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs1G-count1-fdatasync$i 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
+    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 conv=fdatasync >"$LOG_PATH"/dd-write-bs1G-count1-fdatasync$i 2>&1
+    sync ; echo 3 >/proc/sys/vm/drop_caches
 done
 for i in $RETRY_SUFFIXES
 do
-    time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-direct$i 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
+    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 oflag=direct >"$LOG_PATH"/dd-write-bs4M-count256-direct$i 2>&1
+    sync ; echo 3 >/proc/sys/vm/drop_caches
 done
 for i in $RETRY_SUFFIXES
 do
-    time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs4M-count256-fdatasync$i 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
+    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=256 conv=fdatasync >"$LOG_PATH"/dd-write-bs4M-count256-fdatasync$i 2>&1
+    sync ; echo 3 >/proc/sys/vm/drop_caches
 done
 for i in $RETRY_SUFFIXES
 do
-    time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=8k count=65536 oflag=direct ; sync ) >"$LOG_PATH"/dd-write-bs8k-count65536-direct$i 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
+    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=8k count=65536 oflag=direct >"$LOG_PATH"/dd-write-bs8k-count65536-direct$i 2>&1
+    sync ; echo 3 >/proc/sys/vm/drop_caches
 done
 for i in $RETRY_SUFFIXES
 do
-    time ( dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=8k count=65536 conv=fdatasync ; sync ) >"$LOG_PATH"/dd-write-bs8k-count65536-fdatasync$i 2>&1
-    echo 3 >/proc/sys/vm/drop_caches
+    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=8k count=65536 conv=fdatasync >"$LOG_PATH"/dd-write-bs8k-count65536-fdatasync$i 2>&1
+    sync ; echo 3 >/proc/sys/vm/drop_caches
 done
 rm -f "$TARGET_PATH"/dd-out
 
@@ -190,7 +190,7 @@ if test -d ./smallfiles; then
     do
 	for sample_size in 128 256 1024 2048 4096 10240 102400 1024000
 	do
-	    time ./smallfile/smallfile_cli.py --top "$TARGET_PATH" --response-times Y --fsync Y --file-size $sample_size --files 4096 --threads $thread_count >"$LOG_PATH"/smallfiles-${sample_size}-${thread_count} 2>&1
+	    ./smallfile/smallfile_cli.py --top "$TARGET_PATH" --response-times Y --fsync Y --file-size $sample_size --files 4096 --threads $thread_count >"$LOG_PATH"/smallfiles-${sample_size}-${thread_count} 2>&1
 	done
     done
 fi

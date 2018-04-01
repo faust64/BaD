@@ -2,6 +2,9 @@
 
 SETUP=false
 LOG_PATH=/var/tmp/BaD
+TMPFILE=/var/tmp/gnuplot.input.$$
+GNUPLOT_COLORS="red blue orange violet yellow black pink cyan"
+GNUPLOT_COLORS_HEX="e6194b 3cb44b ffe119 0082c8 f58231 911eb4 46f0f0 f032e6 d2f53c fabebe 008080 e6beff aa6e28 fffac8 800000 aaffc3 808000 ffd8b1 000080 808080 000000"
 
 test -z "$LOG_PATH" && LOG_PATH=/var/tmp/BaD
 while test "$1"
@@ -21,13 +24,13 @@ EOF
 done
 
 if $SETUP; then
-    if test -x /bin/yum -o /usr/bin/yum; then
+    if test -x /bin/yum -o -x /usr/bin/yum; then
 	if ! yum -y install gnuplot; then
 	    echo failed installing gnuplot >&2
 	    exit 1
 	fi
     elif test -x /usr/bin/apt-get -o -x /bin/apt-get; then
-	if DEBIAN_FRONTEND=noninteractive apt-get install -y gnuplot; then
+	if ! DEBIAN_FRONTEND=noninteractive apt-get install -y gnuplot; then
 	    echo failed installing gnuplot >&2
 	    exit 1
 	fi
@@ -38,17 +41,24 @@ if $SETUP; then
     exit 0
 fi
 
-if test -s "$LOG_PATH/ioping.dat"; then
-    devname=`awk '/ ioping statistics/{print $2" ("$4}' "$LOG_PATH"/ioping`
-    gnuplot <<EOF
+devname=`awk '/ ioping statistics/{print $2" ("$4}' "$LOG_PATH"/ioping`
+gnuplot <<EOF
 set title "$devname IO ping"
 set term "png"
 set output "$LOG_PATH/ioping.png"
-plot "$LOG_PATH/ioping.dat" using 1:2 title "response time un µs" with lines lt 1
+plot "$LOG_PATH/ioping.dat" using 1:2 title "response time in µs" with lines lt 1
 EOF
-fi
-TMPFILE=/var/tmp/gnuplot.input.$$
-GNUPLOT_COLORS="red blue orange violet yellow black pink cyan"
+gnuplot <<EOF
+set title "$devname CPU usage"
+set term "png"
+set output "$LOG_PATH/cpu.png"
+plot "$LOG_PATH/cpu-usage.dat" using 1:2 title "user %" with lines lt rgb "blue", \
+    "$LOG_PATH/cpu-usage.dat" using 1:3 title "nice %" with lines lt rgb "yellow", \
+    "$LOG_PATH/cpu-usage.dat" using 1:4 title "system %" with lines lt rgb "black", \
+    "$LOG_PATH/cpu-usage.dat" using 1:5 title "iowait %" with lines lt rgb "red", \
+    "$LOG_PATH/cpu-usage.dat" using 1:6 title "steal %" with lines lt rgb "violet", \
+    "$LOG_PATH/cpu-usage.dat" using 1:7 title "idle %" with lines lt rgb "gray"
+EOF
 echo -n "plot " >$TMPFILE
 lastbsize=`ls "$LOG_PATH"/dd-read-block-bs*-* | sed 's|.*read-block-bs\([^-]*\)-.*|\1|' | sort -u | tail -1`
 ls "$LOG_PATH"/dd-read-block-bs*-* | sed 's|.*read-block-bs\([^-]*\)-.*|\1|' | sort -u | while read blocksize
@@ -63,7 +73,6 @@ ls "$LOG_PATH"/dd-read-block-bs*-* | sed 's|.*read-block-bs\([^-]*\)-.*|\1|' | s
 	fi
     done >>$TMPFILE
 plotdata=`cat $TMPFILE`
-#FIXME: devname could be unset due to previous conditional?
 gnuplot <<EOF
 set title "$devname read throughputs"
 set term "png"
@@ -85,7 +94,7 @@ ls "$LOG_PATH"/dd-write-bs*-*direct* | sed 's|.*write-bs\([^-]*\)-.*|\1|' | sort
     done >>$TMPFILE
 plotdata=`cat $TMPFILE`
 gnuplot <<EOF
-set title "$devname write throughputs (direct)"
+set title "$devname write throughputs (MB/s, direct)"
 set term "png"
 set output "$LOG_PATH/dd-write-direct.png"
 $plotdata
@@ -105,9 +114,85 @@ ls "$LOG_PATH"/dd-write-bs*-*fdatasync* | sed 's|.*write-bs\([^-]*\)-.*|\1|' | s
     done >>$TMPFILE
 plotdata=`cat $TMPFILE`
 gnuplot <<EOF
-set title "$devname write throughputs (fdatasync)"
+set title "$devname write throughputs (MB/s, fdatasync)"
 set term "png"
 set output "$LOG_PATH/dd-write-fdatasync.png"
+$plotdata
+EOF
+echo -n "plot " >$TMPFILE
+idx=
+for metric in read write
+do
+    for bench in 4threads randrw randwrite
+    do
+	test "$metric" = read -a "$bench" = randwrite && continue
+	test -z "$idx" && idx=1 || idx=`expr $idx + 1`
+	test $idx -ge `echo $GNUPLOT_COLORS | awk -F' ' '{print NF}'` && idx=1
+	color=`echo $GNUPLOT_COLORS | cut -d' ' -f$idx`
+	if test "$metric" = write -a "$bench" = randwrite; then
+	    echo "\"$LOG_PATH/fio-$metric-$bench-throughput.dat\" using 1:2 title \"$metric $bench\" with lines lt rgb \"$color\""
+	else
+	    echo "\"$LOG_PATH/fio-$metric-$bench-throughput.dat\" using 1:2 title \"$metric $bench\" with lines lt rgb \"$color\", \\"
+	fi
+    done
+done >>$TMPFILE
+plotdata=`cat $TMPFILE`
+gnuplot <<EOF
+set title "$devname fio throughputs (MB/s)"
+set term "png"
+set output "$LOG_PATH/fio-throughputs.png"
+$plotdata
+EOF
+echo -n "plot " >$TMPFILE
+idx=
+for bench in read-randrw write-randrw write-randwrite
+do
+    test -z "$idx" && idx=1 || idx=`expr $idx + 3`
+    test `expr $idx + 2` -ge `echo $GNUPLOT_COLORS_HEXSFX | awk -F' ' '{print NF}'` && idx=1
+    color1=`echo $GNUPLOT_COLORS_HEX | cut -d' ' -f$idx`
+    color2=`echo $GNUPLOT_COLORS_HEX | cut -d' ' -f$(expr $idx + 1)`
+    color3=`echo $GNUPLOT_COLORS_HEX | cut -d' ' -f$(expr $idx + 2)`
+    if test "$bench" = write-randwrite; then
+	echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:2 title \"$bench min\" with lines lt rgb \"#$color1\", \\"
+	echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:3 title \"$bench max\" with lines lt rgb \"#$color2\", \\"
+	echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:4 title \"$bench average\" with lines lt rgb \"#$color3\""
+    else
+	echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:2 title \"$bench min\" with lines lt rgb \"#$color1\", \\"
+	echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:3 title \"$bench max\" with lines lt rgb \"#$color2\", \\"
+	echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:4 title \"$bench average\" with lines lt rgb \"#$color3\", \\"
+    fi
+done >>$TMPFILE
+plotdata=`cat $TMPFILE`
+gnuplot <<EOF
+set title "$devname fio benchmark (iops)"
+set term "png"
+set output "$LOG_PATH/fio-main-iops.png"
+$plotdata
+EOF
+echo -n "plot " >$TMPFILE
+idx=
+for worker in bgupdread bgupdwrite bgwriter queryA queryB
+do
+    test -z "$idx" && idx=1 || idx=`expr $idx + 3`
+    test `expr $idx + 2` -ge `echo $GNUPLOT_COLORS_HEXSFX | awk -F' ' '{print NF}'` && idx=1
+    color1=`echo $GNUPLOT_COLORS_HEX | cut -d' ' -f$idx`
+    color2=`echo $GNUPLOT_COLORS_HEX | cut -d' ' -f$(expr $idx + 1)`
+    color3=`echo $GNUPLOT_COLORS_HEX | cut -d' ' -f$(expr $idx + 2)`
+    if test "$worker" = queryB; then
+	echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:2 title \"$worker min\" with lines lt rgb \"#$color1\", \\"
+	echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:3 title \"$worker max\" with lines lt rgb \"#$color2\", \\"
+	echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:4 title \"$worker average\" with lines lt rgb \"#$color3\""
+    else
+	echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:2 title \"$worker min\" with lines lt rgb \"#$color1\", \\"
+	echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:3 title \"$worker max\" with lines lt rgb \"#$color2\", \\"
+	echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:4 title \"$worker average\" with lines lt rgb \"#$color3\", \\"
+    fi
+done >>$TMPFILE
+plotdata=`cat $TMPFILE`
+gnuplot <<EOF
+set title "$devname fio custom workload (iops)"
+set term "png"
+set output "$LOG_PATH/fio-custom-iops.png"
 $plotdata
 EOF
 rm -f $TMPFILE
