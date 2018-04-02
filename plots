@@ -221,7 +221,7 @@ awk '{print $1}' "$LOG_PATH"/blocks-usage.dat | sort -u | \
 set title "$devname overall usage"
 set term "png"
 set output "$LOG_PATH/blocks-$devname-usage.png"
-plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:14 title "util" with filledcurve
+plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:14 title "util" with lines lt rgb "red"
 EOF
 	gnuplot <<EOF
 set title "$devname requests"
