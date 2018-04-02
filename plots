@@ -74,7 +74,7 @@ ls "$LOG_PATH"/dd-read-block-bs*-* | sed 's|.*read-block-bs\([^-]*\)-.*|\1|' | s
     done >>$TMPFILE
 plotdata=`cat $TMPFILE`
 gnuplot <<EOF
-set title "$devname read throughputs"
+set title "$devname read throughputs (MB/s)"
 set term "png"
 set output "$LOG_PATH/dd-read-block.png"
 $plotdata
@@ -218,7 +218,7 @@ awk '{print $1}' "$LOG_PATH"/blocks-usage.dat | sort -u | \
 	    continue
 	fi
 	gnuplot <<EOF
-set title "$devname overall usage"
+set title "$devname overall usage (%)"
 set term "png"
 set output "$LOG_PATH/blocks-$devname-usage.png"
 plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:14 title "util" with lines lt rgb "red"
@@ -233,7 +233,7 @@ plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:2 title "read request merge" 
      "$LOG_PATH/blocks-$devname-usage.dat" using 1:5 title "write requests" with lines lt rgb "violet"
 EOF
 	gnuplot <<EOF
-set title "$devname response times"
+set title "$devname response times (ms)"
 set term "png"
 set output "$LOG_PATH/blocks-$devname-times.png"
 plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:10 title "average request processing time" with lines lt rgb "red", \
@@ -242,18 +242,23 @@ plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:10 title "average request pro
      "$LOG_PATH/blocks-$devname-usage.dat" using 1:13 title "average service time" with lines lt rgb "violet"
 EOF
 	gnuplot <<EOF
-set title "$devname throughputs"
+set title "$devname throughputs (MB/s)"
 set term "png"
 set output "$LOG_PATH/blocks-$devname-speed.png"
-plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:6 title "read MB/s" with lines lt rgb "red", \
-     "$LOG_PATH/blocks-$devname-usage.dat" using 1:7 title "written MB/s" with lines lt rgb "blue"
+plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:6 title "read" with lines lt rgb "red", \
+     "$LOG_PATH/blocks-$devname-usage.dat" using 1:7 title "written" with lines lt rgb "blue"
 EOF
 	gnuplot <<EOF
-set title "$devname request sizes"
+set title "$devname requests size (sectors)"
 set term "png"
 set output "$LOG_PATH/blocks-$devname-rqsizes.png"
-plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:8 title "average request size" with lines lt rgb "red", \
-     "$LOG_PATH/blocks-$devname-usage.dat" using 1:9 title "average queue size" with lines lt rgb "blue"
+plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:8 title "average request size" with lines lt rgb "red"
+EOF
+	gnuplot <<EOF
+set title "$devname requests queue length"
+set term "png"
+set output "$LOG_PATH/blocks-$devname-qsizes.png"
+plot "$LOG_PATH/blocks-$devname-usage.dat" using 1:9 title "average queue size" with lines lt rgb "red"
 EOF
     done
 
