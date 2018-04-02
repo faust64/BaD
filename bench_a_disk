@@ -33,13 +33,6 @@ if ! test `id -u` = 0; then
 fi
 test -d "$TARGET_PATH" || mkdir -p "$TARGET_PATH" 2>/dev/null
 test -d "$LOG_PATH" || mkdir -p "$LOG_PATH" 2>/dev/null
-if ! test -b "$TARGET_DEVICE"; then
-    echo "$TARGET_DEVICE is not a block device"
-    exit 1
-elif ! test -d "$TARGET_PATH" -a -d "$LOG_PATH"; then
-    echo "missing paths"
-    exit 1
-fi >&2
 
 if $SETUP; then
     if test -x /bin/yum -o -x /usr/bin/yum; then
@@ -58,6 +51,12 @@ if $SETUP; then
 	exit 1
     fi
     exit 0
+elif ! test -b "$TARGET_DEVICE"; then
+    echo "$TARGET_DEVICE is not a block device" >&2
+    exit 1
+elif ! test -d "$TARGET_PATH" -a -d "$LOG_PATH"; then
+    echo "missing paths" >&2
+    exit 1
 elif test -z "$FAST_INPUT"; then
     echo trying to allocate 1240M of RAM mounting tmpfs
     if mkdir -p /var/tmp/fast; then
