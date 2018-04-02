@@ -174,7 +174,7 @@ graph:
 	ROW=1; cat "$$LOG_PATH"/fio-randrw* | awk '/READ:/' | sed -e 's|.*bw=\([0-9\.]*\)\([KMG]*\)[i]*B/s.*|\1 \2|' -e 's|.*aggrb=\([0-9\.]*\)\([KMG]*\)[i]*B/s.*|\1 \2|' | \
 	    while read throughput unit; \
 		do \
-		    if test "$$unit" = K; then throughput=`printf "%03f" $$throughput | sed 's|\.||'`; \
+		    if test "$$unit" = K; then throughput=`printf "%.03f" $$throughput | sed 's|\.||'`; \
 		    elif test "$$unit" = M; then throughput=`printf "%06f" $$throughput | sed 's|\.||'`; \
 		    elif test "$$unit" = G; then throughput=`printf "%09f" $$throughput | sed 's|\.||'`; \
 		    fi; \
@@ -185,7 +185,7 @@ graph:
 	ROW=1; cat "$$LOG_PATH"/fio-randrw* | awk '/WRITE:/' | sed -e 's|.*bw=\([0-9\.]*\)\([KMG]*\)[i]*B/s.*|\1 \2|' -e 's|.*aggrb=\([0-9\.]*\)\([KMG]*\)[i]*B/s.*|\1 \2|' | \
 	    while read throughput unit; \
 		do \
-		    if test "$$unit" = K; then throughput=`printf "%03f" $$throughput | sed 's|\.||'`; \
+		    if test "$$unit" = K; then throughput=`printf "%.03f" $$throughput | sed 's|\.||'`; \
 		    elif test "$$unit" = M; then throughput=`printf "%06f" $$throughput | sed 's|\.||'`; \
 		    elif test "$$unit" = G; then throughput=`printf "%09f" $$throughput | sed 's|\.||'`; \
 		    fi; \
@@ -196,7 +196,7 @@ graph:
 	ROW=1; cat "$$LOG_PATH"/fio-randwrite* | awk '/WRITE:/' | sed -e 's|.*bw=\([0-9\.]*\)\([KMG]*\)[i]*B/s.*|\1 \2|' -e 's|.*aggrb=\([0-9\.]*\)\([KMG]*\)[i]*B/s.*|\1 \2|' | \
 	    while read throughput unit; \
 		do \
-		    if test "$$unit" = K; then throughput=`printf "%03f" $$throughput | sed 's|\.||'`; \
+		    if test "$$unit" = K; then throughput=`printf "%.03f" $$throughput | sed 's|\.||'`; \
 		    elif test "$$unit" = M; then throughput=`printf "%06f" $$throughput | sed 's|\.||'`; \
 		    elif test "$$unit" = G; then throughput=`printf "%09f" $$throughput | sed 's|\.||'`; \
 		    fi; \
@@ -207,7 +207,7 @@ graph:
 	ROW=1; cat "$$LOG_PATH"/fio-4threads* | awk '/READ:/' | sed -e 's|.*bw=\([0-9\.]*\)\([KMG]*\)[i]*B/s.*|\1 \2|' -e 's|.*aggrb=\([0-9\.]*\)\([KMG]*\)[i]*B/s.*|\1 \2|' | \
 	    while read throughput unit; \
 		do \
-		    if test "$$unit" = K; then throughput=`printf "%03f" $$throughput | sed 's|\.||'`; \
+		    if test "$$unit" = K; then throughput=`printf "%.03f" $$throughput | sed 's|\.||'`; \
 		    elif test "$$unit" = M; then throughput=`printf "%06f" $$throughput | sed 's|\.||'`; \
 		    elif test "$$unit" = G; then throughput=`printf "%09f" $$throughput | sed 's|\.||'`; \
 		    fi; \
@@ -218,7 +218,7 @@ graph:
 	ROW=1; cat "$$LOG_PATH"/fio-4threads* | awk '/WRITE:/' | sed -e 's|.*bw=\([0-9\.]*\)\([KMG]*\)[i]*B/s.*|\1 \2|' -e 's|.*aggrb=\([0-9\.]*\)\([KMG]*\)[i]*B/s.*|\1 \2|' | \
 	    while read throughput unit; \
 		do \
-		    if test "$$unit" = K; then throughput=`printf "%03f" $$throughput | sed 's|\.||'`; \
+		    if test "$$unit" = K; then throughput=`printf "%.03f" $$throughput | sed 's|\.||'`; \
 		    elif test "$$unit" = M; then throughput=`printf "%06f" $$throughput | sed 's|\.||'`; \
 		    elif test "$$unit" = G; then throughput=`printf "%09f" $$throughput | sed 's|\.||'`; \
 		    fi; \
