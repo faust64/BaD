@@ -64,40 +64,77 @@ graph:
 		do \
 		    awk 'BEGIN{c=1}/copied/{print c " " $$8;c=c+1;}' "$$LOG_PATH"/dd-write-bs$$blocksize-*fdatasync* >"$$LOG_PATH"/dd-write-fdatasync-bs$$blocksize.dat; \
 		done; \
-	ROW=1; grep -A2 'read: IOPS' "$$LOG_PATH"/fio-randrw* | awk '/iops[ ]*:/' | sed 's|.*min=[ ]*\([0-9\.]*\), max=[ ]*\([0-9\.]*\), avg=[ ]*\([0-9\.]*\),.*|\1 \2 \3|' | \
-	    while read min max avg; \
-		do \
-		    echo $$ROW $$min $$max $$avg; \
-		    ROW=`expr $$ROW + 1`; \
-		done >"$$LOG_PATH"/fio-read-randrw-iops.dat; \
-	ROW=1; grep -A2 'write: IOPS' "$$LOG_PATH"/fio-randrw* | awk '/iops[ ]*:/' | sed 's|.*min=[ ]*\([0-9\.]*\), max=[ ]*\([0-9\.]*\), avg=[ ]*\([0-9\.]*\),.*|\1 \2 \3|' | \
-	    while read min max avg; \
-		do \
-		    echo $$ROW $$min $$max $$avg; \
-		    ROW=`expr $$ROW + 1`; \
-		done >"$$LOG_PATH"/fio-write-randrw-iops.dat; \
-	ROW=1; grep -A2 'write: IOPS' "$$LOG_PATH"/fio-randwrite* | awk '/iops[ ]*:/' | sed 's|.*min=[ ]*\([0-9\.]*\), max=[ ]*\([0-9\.]*\), avg=[ ]*\([0-9\.]*\),.*|\1 \2 \3|' | \
-	    while read min max avg; \
-		do \
-		    echo $$ROW $$min $$max $$avg; \
-		    ROW=`expr $$ROW + 1`; \
-		done >"$$LOG_PATH"/fio-write-randwrite-iops.dat; \
-	rm -f "$$LOG_PATH"/fio-custom-iops-*.dat; \
-	ROW=1; cat "$$LOG_PATH"/fio-4threads* | awk '/iops[ ]*:/' | sed 's|.*min=[ ]*\([0-9\.]*\), max=[ ]*\([0-9\.]*\), avg=[ ]*\([0-9\.]*\),.*|\1 \2 \3|' | \
-	    while read min max avg; \
-		do \
-		    mod=`expr $$ROW % 5`; PFX=; \
-		    if test "$$mod" = 1; then PFX=bgwriter; \
-		    elif test "$$mod" = 2; then PFX=queryA; \
-		    elif test "$$mod" = 3; then PFX=queryB; \
-		    elif test "$$mod" = 4; then PFX=bgupdread; \
-		    else PFX=bgupdwrite; fi; \
-		    eval cpt=\$$\{$${PFX}count\}; \
-		    test -z "$$cpt" && cpt=1; \
-		    echo "$$cpt $$min $$max $$avg" >>"$$LOG_PATH"/fio-custom-iops-$$PFX.dat; \
-		    eval $${PFX}count=`expr $$cpt + 1`; \
-		    ROW=`expr $$ROW + 1`; \
-		done; \
+	if grep 'iops[ ]*:' "$$LOG_PATH"/fio-randrw* >/dev/null 2>&1; then \
+	    ROW=1; grep -A2 'read: IOPS' "$$LOG_PATH"/fio-randrw* | awk '/iops[ ]*:/' | sed 's|.*min=[ ]*\([0-9\.]*\), max=[ ]*\([0-9\.]*\), avg=[ ]*\([0-9\.]*\),.*|\1 \2 \3|' | \
+		while read min max avg; \
+		    do \
+			echo $$ROW $$min $$max $$avg; \
+			ROW=`expr $$ROW + 1`; \
+		    done >"$$LOG_PATH"/fio-read-randrw-iops.dat; \
+	    ROW=1; grep -A2 'write: IOPS' "$$LOG_PATH"/fio-randrw* | awk '/iops[ ]*:/' | sed 's|.*min=[ ]*\([0-9\.]*\), max=[ ]*\([0-9\.]*\), avg=[ ]*\([0-9\.]*\),.*|\1 \2 \3|' | \
+		while read min max avg; \
+		    do \
+			echo $$ROW $$min $$max $$avg; \
+			ROW=`expr $$ROW + 1`; \
+		    done >"$$LOG_PATH"/fio-write-randrw-iops.dat; \
+	    ROW=1; grep -A2 'write: IOPS' "$$LOG_PATH"/fio-randwrite* | awk '/iops[ ]*:/' | sed 's|.*min=[ ]*\([0-9\.]*\), max=[ ]*\([0-9\.]*\), avg=[ ]*\([0-9\.]*\),.*|\1 \2 \3|' | \
+		while read min max avg; \
+		    do \
+			echo $$ROW $$min $$max $$avg; \
+			ROW=`expr $$ROW + 1`; \
+		    done >"$$LOG_PATH"/fio-write-randwrite-iops.dat; \
+	    rm -f "$$LOG_PATH"/fio-custom-iops-*.dat; \
+	    ROW=1; cat "$$LOG_PATH"/fio-4threads* | awk '/iops[ ]*:/' | sed 's|.*min=[ ]*\([0-9\.]*\), max=[ ]*\([0-9\.]*\), avg=[ ]*\([0-9\.]*\),.*|\1 \2 \3|' | \
+		while read min max avg; \
+		    do \
+			mod=`expr $$ROW % 5`; PFX=; \
+			if test "$$mod" = 1; then PFX=bgwriter; \
+			elif test "$$mod" = 2; then PFX=queryA; \
+			elif test "$$mod" = 3; then PFX=queryB; \
+			elif test "$$mod" = 4; then PFX=bgupdread; \
+			else PFX=bgupdwrite; fi; \
+			eval cpt=\$$\{$${PFX}count\}; \
+			test -z "$$cpt" && cpt=1; \
+			echo "$$cpt $$min $$max $$avg" >>"$$LOG_PATH"/fio-custom-iops-$$PFX.dat; \
+			eval $${PFX}count=`expr $$cpt + 1`; \
+			ROW=`expr $$ROW + 1`; \
+		    done; \
+	else \
+	    ROW=1; awk '/read[ ]*:.*iops=/' "$$LOG_PATH"/fio-randrw* | sed 's|.*iops=[ ]*\([0-9\.]*\),.*|\1|' | \
+		while read iops; \
+		    do \
+			echo $$ROW $$iops; \
+			ROW=`expr $$ROW + 1`; \
+		    done >"$$LOG_PATH"/fio-read-randrw-iops.dat; \
+	    ROW=1; awk '/write[ ]*:.*iops=/' "$$LOG_PATH"/fio-randrw* | sed 's|.*iops=[ ]*\([0-9\.]*\),.*|\1|' | \
+		while read iops; \
+		    do \
+			echo $$ROW $$iops; \
+			ROW=`expr $$ROW + 1`; \
+		    done >"$$LOG_PATH"/fio-write-randrw-iops.dat; \
+	    ROW=1; awk '/write[ ]*:.*iops=/' "$$LOG_PATH"/fio-randwrite* | sed 's|.*iops=[ ]*\([0-9\.]*\),.*|\1|' | \
+		while read iops; \
+		    do \
+			echo $$ROW $$iops; \
+			ROW=`expr $$ROW + 1`; \
+		    done >"$$LOG_PATH"/fio-write-randwrite-iops.dat; \
+	    rm -f "$$LOG_PATH"/fio-custom-iops-*.dat; \
+	    ROW=1; awk '/iops=/' "$$LOG_PATH"/fio-4threads* | sed 's|.*iops=[ ]*\([0-9\.]*\),.*|\1|' | \
+		while read iops; \
+		    do \
+			mod=`expr $$ROW % 5`; PFX=; \
+			if test "$$mod" = 1; then PFX=bgwriter; \
+			elif test "$$mod" = 2; then PFX=queryA; \
+			elif test "$$mod" = 3; then PFX=queryB; \
+			elif test "$$mod" = 4; then PFX=bgupdread; \
+			else PFX=bgupdwrite; fi; \
+			eval cpt=\$$\{$${PFX}count\}; \
+			test -z "$$cpt" && cpt=1; \
+			echo "$$cpt $$iops" >>"$$LOG_PATH"/fio-custom-iops-$$PFX.dat; \
+			eval $${PFX}count=`expr $$cpt + 1`; \
+			ROW=`expr $$ROW + 1`; \
+		    done; \
+	fi; \
 	ROW=1; cat "$$LOG_PATH"/fio-randrw* | awk '/READ:/' | sed -e 's|.*bw=\([0-9\.]*\)\([KMG]*\)[i]*B/s.*|\1 \2|' -e 's|.*aggrb=\([0-9\.]*\)\([KMG]*\)[i]*B/s.*|\1 \2|' | \
 	    while read throughput unit; \
 		do \

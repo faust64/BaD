@@ -145,6 +145,7 @@ $plotdata
 EOF
 echo -n "plot " >$TMPFILE
 idx=
+fmt=`head -1 "$LOG_PATH"/fio-read-randrw-iops.dat | awk '{print NF}'`
 for bench in read-randrw write-randrw write-randwrite
 do
     test -z "$idx" && idx=1 || idx=`expr $idx + 3`
@@ -152,10 +153,17 @@ do
     color1=`echo $GNUPLOT_COLORS_HEX | cut -d' ' -f$idx`
     color2=`echo $GNUPLOT_COLORS_HEX | cut -d' ' -f$(expr $idx + 1)`
     color3=`echo $GNUPLOT_COLORS_HEX | cut -d' ' -f$(expr $idx + 2)`
+
     if test "$bench" = write-randwrite; then
-	echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:2 title \"$bench min\" with lines lt rgb \"#$color1\", \\"
-	echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:3 title \"$bench max\" with lines lt rgb \"#$color2\", \\"
-	echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:4 title \"$bench average\" with lines lt rgb \"#$color3\""
+	if test "$fmt" = 2; then
+	    echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:2 title \"$bench average\" with lines lt rgb \"#$color1\""
+	else
+	    echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:2 title \"$bench min\" with lines lt rgb \"#$color1\", \\"
+	    echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:3 title \"$bench max\" with lines lt rgb \"#$color2\", \\"
+	    echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:4 title \"$bench average\" with lines lt rgb \"#$color3\""
+	fi
+    elif test "$fmt" = 2; then
+	echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:2 title \"$bench\" with lines lt rgb \"#$color1\", \\"
     else
 	echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:2 title \"$bench min\" with lines lt rgb \"#$color1\", \\"
 	echo "\"$LOG_PATH/fio-$bench-iops.dat\" using 1:3 title \"$bench max\" with lines lt rgb \"#$color2\", \\"
@@ -179,9 +187,15 @@ do
     color2=`echo $GNUPLOT_COLORS_HEX | cut -d' ' -f$(expr $idx + 1)`
     color3=`echo $GNUPLOT_COLORS_HEX | cut -d' ' -f$(expr $idx + 2)`
     if test "$worker" = queryB; then
-	echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:2 title \"$worker min\" with lines lt rgb \"#$color1\", \\"
-	echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:3 title \"$worker max\" with lines lt rgb \"#$color2\", \\"
-	echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:4 title \"$worker average\" with lines lt rgb \"#$color3\""
+	if test "$fmt" = 2; then
+	    echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:2 title \"$worker\" with lines lt rgb \"#$color1\""
+	else
+	    echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:2 title \"$worker min\" with lines lt rgb \"#$color1\", \\"
+	    echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:3 title \"$worker max\" with lines lt rgb \"#$color2\", \\"
+	    echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:4 title \"$worker average\" with lines lt rgb \"#$color3\""
+	fi
+    elif test "$fmt" = 2; then
+	echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:2 title \"$worker\" with lines lt rgb \"#$color1\", \\"
     else
 	echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:2 title \"$worker min\" with lines lt rgb \"#$color1\", \\"
 	echo "\"$LOG_PATH/fio-custom-iops-$worker.dat\" using 1:3 title \"$worker max\" with lines lt rgb \"#$color2\", \\"
