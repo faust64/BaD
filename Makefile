@@ -52,17 +52,53 @@ graph:
 	ls "$$LOG_PATH"/dd-read-block-bs*-* | sed 's|.*read-block-bs\([^-]*\)-.*|\1|' | sort -u | \
 	    while read blocksize; \
 		do \
-		    awk 'BEGIN{c=1}/copied/{print c " " $$8;c=c+1;}' "$$LOG_PATH"/dd-read-block-bs$$blocksize-* >"$$LOG_PATH"/dd-read-block-bs$$blocksize.dat; \
+		    awk 'BEGIN{c=1}/copied/{print c " " $$0 ;c=c+1;}' "$$LOG_PATH"/dd-read-block-bs$$blocksize-* | \
+			while read counter line; \
+			do \
+			    eval `echo "$$line" | sed 's|.* s, \([0-9\.]*\) \([KGBM]\)[B]*/s.*|speed=\1 unit=\2|'`; \
+			    if test "$$unit" = G; then \
+				speed="`printf "%.03f\n" "$$speed" | sed 's|\.||'`"; \
+			    elif test "$$unit" = K; then \
+				speed="0.`printf "%03.0f" "$$speed"`"; \
+			    elif test "$$unit" = B; then \
+				speed="0.`printf "%06.0f" "$$speed"`"; \
+			    fi; \
+			     echo "$$counter $$speed"; \
+			done >"$$LOG_PATH"/dd-read-block-bs$$blocksize.dat; \
 		done; \
 	ls "$$LOG_PATH"/dd-write-bs*-*direct* | sed 's|.*write-bs\([^-]*\)-.*|\1|' | sort -u | \
 	    while read blocksize; \
 		do \
-		    awk 'BEGIN{c=1}/copied/{print c " " $$8;c=c+1;}' "$$LOG_PATH"/dd-write-bs$$blocksize-*direct* >"$$LOG_PATH"/dd-write-direct-bs$$blocksize.dat; \
+		    awk 'BEGIN{c=1}/copied/{print c " " $$0 ;c=c+1;}' "$$LOG_PATH"/dd-write-bs$$blocksize-*direct* | \
+			while read counter line; \
+			do \
+			    eval `echo "$$line" | sed 's|.* s, \([0-9\.]*\) \([KGBM]\)[B]*/s.*|speed=\1 unit=\2|'`; \
+			    if test "$$unit" = G; then \
+				speed="`printf "%.03f\n" "$$speed" | sed 's|\.||'`"; \
+			    elif test "$$unit" = K; then \
+				speed="0.`printf "%03.0f" "$$speed"`"; \
+			    elif test "$$unit" = B; then \
+				speed="0.`printf "%06.0f" "$$speed"`"; \
+			    fi; \
+			     echo "$$counter $$speed"; \
+			done >"$$LOG_PATH"/dd-write-direct-bs$$blocksize.dat; \
 		done; \
 	ls "$$LOG_PATH"/dd-write-bs*-*fdatasync* | sed 's|.*write-bs\([^-]*\)-.*|\1|' | sort -u | \
 	    while read blocksize; \
 		do \
-		    awk 'BEGIN{c=1}/copied/{print c " " $$8;c=c+1;}' "$$LOG_PATH"/dd-write-bs$$blocksize-*fdatasync* >"$$LOG_PATH"/dd-write-fdatasync-bs$$blocksize.dat; \
+		    awk 'BEGIN{c=1}/copied/{print c " " $$0 ;c=c+1;}' "$$LOG_PATH"/dd-write-bs$$blocksize-*fdatasync* | \
+			while read counter line; \
+			do \
+			    eval `echo "$$line" | sed 's|.* s, \([0-9\.]*\) \([KGBM]\)[B]*/s.*|speed=\1 unit=\2|'`; \
+			    if test "$$unit" = G; then \
+				speed="`printf "%.03f\n" "$$speed" | sed 's|\.||'`"; \
+			    elif test "$$unit" = K; then \
+				speed="0.`printf "%03.0f" "$$speed"`"; \
+			    elif test "$$unit" = B; then \
+				speed="0.`printf "%06.0f" "$$speed"`"; \
+			    fi; \
+			     echo "$$counter $$speed"; \
+			done >"$$LOG_PATH"/dd-write-fdatasync-bs$$blocksize.dat; \
 		done; \
 	if grep 'iops[ ]*:' "$$LOG_PATH"/fio-randrw* >/dev/null 2>&1; then \
 	    ROW=1; grep -A2 'read: IOPS' "$$LOG_PATH"/fio-randrw* | awk '/iops[ ]*:/' | sed 's|.*min=[ ]*\([0-9\.]*\), max=[ ]*\([0-9\.]*\), avg=[ ]*\([0-9\.]*\),.*|\1 \2 \3|' | \
