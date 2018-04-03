@@ -1,5 +1,5 @@
 /diskperf_utils
 /smallfile
-/logs-zero
 /logs-random
+/logs-zero
 /*.log

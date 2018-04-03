@@ -37,13 +37,13 @@ test -d "$LOG_PATH" || mkdir -p "$LOG_PATH" 2>/dev/null
 if $SETUP; then
     if test -x /bin/yum -o -x /usr/bin/yum; then
 	if ! yum -y install fio sysstat ioping; then
-	    echo failed installing fio and sysstat >&2
+	    echo failed installing fio, sysstat or ioping >&2
 	    echo in doubt, try installing epel-release >&2
 	    exit 1
 	fi
     elif test -x /usr/bin/apt-get -o -x /bin/apt-get; then
 	if ! DEBIAN_FRONTEND=noninteractive apt-get install -y fio sysstat ioping; then
-	    echo failed installing fio and sysstat >&2
+	    echo failed installing fio, sysstat or ioping >&2
 	    exit 1
 	fi
     else
