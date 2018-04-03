@@ -239,7 +239,7 @@ run:	run-random
 reset:
 	rm -fr logs-zero logs-random
 
-setup:
+setup-script:
 	@@if ! test -d smallfile; then \
 	    git clone https://github.com/bengland2/smallfile; \
 	fi
@@ -251,6 +251,8 @@ setup:
 		chmod +x diskperf_utils/$$file; \
 	    done; \
 	fi
+
+setup:	setup-script
 	@@./bench_a_disk -s
 	@@./plots -s
 
