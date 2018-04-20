@@ -51,13 +51,16 @@ if $SETUP; then
 	exit 1
     fi
     exit 0
-elif ! test -b "$TARGET_DEVICE"; then
-    echo "$TARGET_DEVICE is not a block device" >&2
-    exit 1
 elif ! test -d "$TARGET_PATH" -a -d "$LOG_PATH"; then
     echo "missing paths" >&2
     exit 1
-elif test -z "$FAST_INPUT"; then
+elif ! test -b "$TARGET_DEVICE"; then
+    if test -z "$USERSPACE"; then
+	echo "$TARGET_DEVICE is not a block device" >&2
+	exit 1
+    fi
+fi
+if test -z "$FAST_INPUT"; then
     echo trying to allocate 1240M of RAM mounting tmpfs
     if mkdir -p /var/tmp/fast; then
 	if mount tmpfs -t tmpfs /var/tmp/fast -o size=1240M; then
@@ -113,13 +116,22 @@ SAR2_PID=$!
 ioping "$TARGET_PATH" >"$LOG_PATH"/ioping 2>&1 &
 IOPING_PID=$!
 
+if test "$USERSPACE"; then
+    dd if="$FAST_INPUT" of=/home/bench/idontdoblock bs=1G count=1
+    for i in 2 3 4
+    do
+	dd if="$FAST_INPUT" of=/home/bench/idontdoblock bs=1G count=1 oflag=append conv=notrunc
+    done
+    TARGET_DEVICE=/home/bench/idontdoblock
+else
 # Device checks
-echo checking device "$TARGET_DEVICE"
-hdparm -Tt "$TARGET_DEVICE" >"$LOG_PATH"/hdparm-Tt 2>&1
-if ! xfs_info "$TARGET_DEVICE" >"$LOG_PATH"/xfs_info 2>&1; then
-    rm -f "$LOG_PATH"/xfs_info
-    if ! dumpe2fs "$TARGET_DEVICE" >"$LOG_PATH"/dumpe2fs 2>&1; then
-	rm -f "$LOG_PATH"/dumpe2fs
+    echo checking device "$TARGET_DEVICE"
+    hdparm -Tt "$TARGET_DEVICE" >"$LOG_PATH"/hdparm-Tt 2>&1
+    if ! xfs_info "$TARGET_DEVICE" >"$LOG_PATH"/xfs_info 2>&1; then
+	rm -f "$LOG_PATH"/xfs_info
+	if ! dumpe2fs "$TARGET_DEVICE" >"$LOG_PATH"/dumpe2fs 2>&1; then
+	    rm -f "$LOG_PATH"/dumpe2fs
+	fi
     fi
 fi
 
@@ -251,13 +263,15 @@ EOF
     rm -f 4threads.fio
 fi
 
-# Diskperfs
-if test -d diskperf_utils; then
-    echo reading from "$TARGET_DEVICE"
-    timeout 30 python ./diskperf_utils/test_diskread.py "$TARGET_DEVICE" --random -m 30 -f "$LOG_PATH"/diskperf-random.plot
-    echo 3 >/proc/sys/vm/drop_caches
-    timeout 30 python ./diskperf_utils/test_diskread.py "$TARGET_DEVICE" -m 30 -f "$LOG_PATH"/diskperf.plot
-    echo 3 >/proc/sys/vm/drop_caches
+if test -z "$USERSPACE"; then
+    # Diskperfs
+    if test -d diskperf_utils; then
+	echo reading from "$TARGET_DEVICE"
+	timeout 30 python ./diskperf_utils/test_diskread.py "$TARGET_DEVICE" --random -m 30 -f "$LOG_PATH"/diskperf-random.plot
+	echo 3 >/proc/sys/vm/drop_caches
+	timeout 30 python ./diskperf_utils/test_diskread.py "$TARGET_DEVICE" -m 30 -f "$LOG_PATH"/diskperf.plot
+	echo 3 >/proc/sys/vm/drop_caches
+    fi
 fi
 
 ps axww | grep -E '(iotop|ioping|vmstat|sar|iostat|top) '
