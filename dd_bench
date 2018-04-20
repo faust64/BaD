@@ -32,13 +32,13 @@ test -d "$LOG_PATH" || mkdir -p "$LOG_PATH" 2>/dev/null
 
 if $SETUP; then
     if test -x /bin/yum -o -x /usr/bin/yum; then
-	if ! yum -y install fio sysstat ioping; then
+	if ! yum -y install ioping; then
 	    echo failed installing fio, sysstat or ioping >&2
 	    echo in doubt, try installing epel-release >&2
 	    exit 1
 	fi
     elif test -x /usr/bin/apt-get -o -x /bin/apt-get; then
-	if ! DEBIAN_FRONTEND=noninteractive apt-get install -y fio sysstat ioping; then
+	if ! DEBIAN_FRONTEND=noninteractive apt-get install -y ioping; then
 	    echo failed installing fio, sysstat or ioping >&2
 	    exit 1
 	fi
@@ -51,10 +51,10 @@ elif ! test -d "$TARGET_PATH" -a -d "$LOG_PATH"; then
     echo "missing paths" >&2
     exit 1
 elif test -z "$FAST_INPUT"; then
-    echo trying to allocate 1240M of RAM mounting tmpfs
+    echo trying to allocate 7000M of RAM mounting tmpfs
     if mkdir -p /var/tmp/fast; then
-	if mount tmpfs -t tmpfs /var/tmp/fast -o size=1240M; then
-	    if dd if=/dev/urandom of=/var/tmp/fast/sample bs=1M count=1032; then
+	if mount tmpfs -t tmpfs /var/tmp/fast -o size=7000M; then
+	    if dd if=/dev/urandom of=/var/tmp/fast/sample bs=1M count=6543; then
 		FAST_INPUT=/var/tmp/fast/sample
 	    else
 		echo failed generating fast input sample >&2
@@ -104,132 +104,38 @@ SAR2_PID=$!
 ioping "$TARGET_PATH" >"$LOG_PATH"/ioping 2>&1 &
 IOPING_PID=$!
 
-# bonnie, iozone?
-
-dd if="$FAST_INPUT" of=/home/bench/idontdoblock bs=1G count=1
-for i in 2 3 4
+TARGET_FILE="$TARGET_PATH"/idontdoblock
+dd if="$FAST_INPUT" of="$TARGET_FILE" bs=1G count=1
+for i in 2 3 4 5
 do
-   dd if="$FAST_INPUT" of=/home/bench/idontdoblock bs=1G count=1 oflag=append conv=notrunc 
-done
-TARGET_DEVICE=/home/bench/idontdoblock
-
-# Read
-echo reading from "$TARGET_DEVICE"
-cpt=0
-for op in read write
-do
-    if test "$action" = read; then
-	lookfor=directfullblock
-    else
-	lookfor="direct fdatasync"
-    for size in 128 1023 8k 4M 32M 1G
-    do
-	if test "$op" = read; then
-	    mkdir -p -d "$LOG_PATH/$op/$size"
-	else
-	    mkdir -p -d "$LOG_PATH/$op/$option/$size"
-	fi
-    done
-done
-mkdir -p read
-
-while test "$cpt" -lt 65536
-do
-    dd "if=$TARGET_DEVICE" of=/dev/null bs=128 count=1 skip=$cpt iflag=direct,fullblock >"$LOG_PATH"/read/128/dd-read-block-bs128-count1-directfullblock$cpt 2>&1
-    cpt=`expr $cpt + 1`
-done
-sync ; echo 3 >/proc/sys/vm/drop_caches
-cpt=0
-while test "$cpt" -lt 65536
-do
-    dd "if=$TARGET_DEVICE" of=/dev/null bs=1023 count=1 skip=$cpt iflag=direct,fullblock >"$LOG_PATH"/read/1023/dd-read-block-bs1023-count1-directfullblock$cpt 2>&1
-    cpt=`expr $cpt + 1`
-done
-sync ; echo 3 >/proc/sys/vm/drop_caches
-cpt=0
-while test "$cpt" -lt 65536
-do
-    dd "if=$TARGET_DEVICE" of=/dev/null bs=8k count=1 skip=$cpt iflag=direct,fullblock >"$LOG_PATH"/read/8k/dd-read-block-bs8k-count1-directfullblock$cpt 2>&1
-    cpt=`expr $cpt + 1`
-done
-sync ; echo 3 >/proc/sys/vm/drop_caches
-cpt=0
-while test "$cpt" -lt 256
-do
-    dd "if=$TARGET_DEVICE" of=/dev/null bs=4M count=1 skip=$cpt iflag=direct,fullblock >"$LOG_PATH"/read/4M/dd-read-block-bs4M-count1-directfullblock$cpt 2>&1
-    cpt=`expr $cpt + 1`
-done
-sync ; echo 3 >/proc/sys/vm/drop_caches
-cpt=0
-while test "$cpt" -lt 128
-do
-    dd "if=$TARGET_DEVICE" of=/dev/null bs=32M count=1 skip=$cpt iflag=direct,fullblock >"$LOG_PATH"/read/32M/dd-read-block-bs32M-count1-directfullblock$cpt 2>&1
-    cpt=`expr $cpt + 1`
-done
-sync ; echo 3 >/proc/sys/vm/drop_caches
-cpt=0
-while test "$cpt" -lt 10
-do
-    dd "if=$TARGET_DEVICE" of=/dev/null bs=1G count=1 iflag=direct,fullblock >"$LOG_PATH"/read/1G/dd-read-block-bs1G-count1-directfullblock$cpt 2>&1
-    cpt=`expr $cpt + 1`
-    sync ; echo 3 >/proc/sys/vm/drop_caches
+   dd if="$FAST_INPUT" of="$TARGET_FILE" bs=1G count=1 oflag=append conv=notrunc
 done
 
-# Write
-echo writing to "$TARGET_PATH"
-cpt=0
-while test "$cpt" -lt 10
+for blocksize in 128 1023 8k 4M 32M 1G
 do
-    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 oflag=direct >"$LOG_PATH"/write/direct/1G/dd-write-block-bs1G-count1-direct$cpt 2>&1
-    sync ; echo 3 >/proc/sys/vm/drop_caches
-    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 conv=fdatasync >"$LOG_PATH"/write/fdatasync/1G/dd-write-block-bs1G-count1-fdatasync$cpt 2>&1
-    sync ; echo 3 >/proc/sys/vm/drop_caches
-    cpt=`expr $cpt + 1`
-done
-cpt=0
-while test "$cpt" -lt 128
-do
-    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=32M count=1 skip=$cpt conv=fdatasync >"$LOG_PATH"/write/fdatasync/32M/dd-write-block-bs32M-count1-fdatasync$cpt 2>&1
-    cpt=`expr $cpt + 1`
-done
-sync ; echo 3 >/proc/sys/vm/drop_caches
-cpt=0
-while test "$cpt" -lt 128
-do
-    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=32M count=1 skip=$cpt oflag=direct >"$LOG_PATH"/write/direct/32M/dd-write-block-bs32M-count1-direct$cpt 2>&1
-    cpt=`expr $cpt + 1`
-done
-sync ; echo 3 >/proc/sys/vm/drop_caches
-cpt=0
-while test "$cpt" -lt 256
-do
-    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=1 skip=$cpt conv=fdatasync >"$LOG_PATH"/write/fdatasync/4M/dd-write-block-bs4M-count1-fdatasync$cpt 2>&1
-    cpt=`expr $cpt + 1`
-done
-sync ; echo 3 >/proc/sys/vm/drop_caches
-cpt=0
-while test "$cpt" -lt 256
-do
-    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=1 skip=$cpt oflag=direct >"$LOG_PATH"/write/direct/4M/dd-write-block-bs4M-count1-direct$cpt 2>&1
-    cpt=`expr $cpt + 1`
-done
-sync ; echo 3 >/proc/sys/vm/drop_caches
-for small in 8k 1023 128
-do
+    mkdir -p "$LOG_PATH/read/$blocksize" "$LOG_PATH/write/fdatasync/$blocksize" "$LOG_PATH/write/direct/$blocksize"
+    case "$blocksize" in
+	*M)	limit=512 ; rotate=160 ;;
+	*G)	limit=64 ; rotate=5 ;;
+	*)	limit=65536 ; rotate=65535 ;;
+    esac
     cpt=0
-    while test "$cpt" -lt 65536
+    while test "$cpt" -lt $limit
     do
-	dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=$small count=1 skip=$cpt oflag=direct >"$LOG_PATH"/write/direct/$small/dd-write-block-bs$small-count1-direct$cpt 2>&1
+	dd "if=$TARGET_FILE" of=/dev/null bs=$blocksize count=1 skip=`expr $cpt % $rotate` iflag=direct,fullblock >"$LOG_PATH"/read/$blocksize/dd-read-block-bs{$blocksize}-count1-directfullblock$cpt 2>&1
 	cpt=`expr $cpt + 1`
+	sync ; echo 3 >/proc/sys/vm/drop_caches
     done
-    sync ; echo 3 >/proc/sys/vm/drop_caches
-    cpt=0
-    while test "$cpt" -lt 65536
+    for woption in direct fdatasync
     do
-	dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=$small count=1 skip=$cpt conv=fdatasync >"$LOG_PATH"/write/fdatasync/$small/dd-write-block-bs$small-count1-fdatasync$cpt 2>&1
-	cpt=`expr $cpt + 1`
+	cpt=0
+	while test "$cpt" -lt $limit
+	do
+	    test "$woption" = direct && ddopt="oflag=direct" || ddopt=conv=fdatasync
+	    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=$blocksize count=1 skip=`expr $cpt % rotate` $ddopt >"$LOG_PATH"/write/$woption/$blocksize/dd-write-block-bs$blocksize-count1-$woption$cpt 2>&1
+	    sync ; echo 3 >/proc/sys/vm/drop_caches
+	done
     done
-    sync ; echo 3 >/proc/sys/vm/drop_caches
 done
 rm -f "$TARGET_PATH"/dd-out
 
