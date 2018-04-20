@@ -1,0 +1,237 @@
+#!/bin/sh
+
+CLEANUP_TMPFS=false
+SETUP=false
+
+test -z "$LOG_PATH" && LOG_PATH=/var/tmp/BaD
+test -z "$TARGET_PATH" && TARGET_PATH=/home/bench
+while test "$1"
+do
+    case "$1" in
+	-s|--setup) SETUP=true ;;
+	-l|--logpath) LOG_PATH="$2"; shift ;;
+	-d|--targetdir) TARGET_PATH="$2"; shift ;;
+	-i|--fastinput) FAST_INPUT="$2"; shift ;;
+	-h|--help) cat <<EOF
+$0 usage:
+  $0 [-l /logs] |-d /test/dir ] [ -e /dev/block ] [ -i /dev/zero ] [ -r 1..n ]
+EOF
+	    exit 0
+	    ;;
+	*) echo discarding unrecognized option "$1" ;;
+    esac
+    shift
+done
+
+if ! test `id -u` = 0; then
+    echo must run as root >&2
+    exit 1
+fi
+test -d "$TARGET_PATH" || mkdir -p "$TARGET_PATH" 2>/dev/null
+test -d "$LOG_PATH" || mkdir -p "$LOG_PATH" 2>/dev/null
+
+if $SETUP; then
+    if test -x /bin/yum -o -x /usr/bin/yum; then
+	if ! yum -y install fio sysstat ioping; then
+	    echo failed installing fio, sysstat or ioping >&2
+	    echo in doubt, try installing epel-release >&2
+	    exit 1
+	fi
+    elif test -x /usr/bin/apt-get -o -x /bin/apt-get; then
+	if ! DEBIAN_FRONTEND=noninteractive apt-get install -y fio sysstat ioping; then
+	    echo failed installing fio, sysstat or ioping >&2
+	    exit 1
+	fi
+    else
+	echo unsupported platform
+	exit 1
+    fi
+    exit 0
+elif ! test -d "$TARGET_PATH" -a -d "$LOG_PATH"; then
+    echo "missing paths" >&2
+    exit 1
+elif test -z "$FAST_INPUT"; then
+    echo trying to allocate 1240M of RAM mounting tmpfs
+    if mkdir -p /var/tmp/fast; then
+	if mount tmpfs -t tmpfs /var/tmp/fast -o size=1240M; then
+	    if dd if=/dev/urandom of=/var/tmp/fast/sample bs=1M count=1032; then
+		FAST_INPUT=/var/tmp/fast/sample
+	    else
+		echo failed generating fast input sample >&2
+	    fi
+	    CLEANUP_TMPFS=true
+	else
+	    echo failed mounting tmpfs serving tests with a fast and non-sequential input >&2
+	fi
+    else
+	echo failed creating fast input directory >&2
+    fi
+    if test -z "$FAST_INPUT"; then
+	echo falling back to /dev/zero, beware of predictibility/compressions/...
+	export FAST_INPUT=/dev/zero
+    fi
+fi
+CORE_COUNT=`awk 'BEGIN{c=0}/^[Pp]rocessor[ \t]/{c=c+1}END{print c;}' /proc/cpuinfo`
+MAX_THREADS=`expr $CORE_COUNT '*' 2 + 2`
+
+cleanup()
+{
+    for child in TOP IOPING IOSTAT IOSTAT VMSTAT SAR1 SAR2
+    do
+	eval childprocess=\$${child}_PID
+	if test "$childprocess"; then
+	    echo "shutting down $child: $childprocess"
+	    ( kill $childprocess || kill -9 $childprocess ) >/dev/null 2>&1
+	fi
+    done
+    if $CLEANUP_TMPFS; then
+	umount /var/tmp/fast
+    fi
+}
+
+trap cleanup EXIT
+
+top -bHd 10 >"$LOG_PATH"/top-bHd 2>&1 &
+TOP_PID=$!
+iostat -Ntkdx 10 >"$LOG_PATH"/iostat-Ntkdx 2>&1 &
+IOSTAT_PID=$!
+vmstat -t 10 >"$LOG_PATH"/vmstat 2>&1 &
+VMSTAT_PID=$!
+sar -n DEV 10 >"$LOG_PATH"/sar-n 2>&1 &
+SAR1_PID=$!
+sar -B 10 >/tmp/sar-B 2>&1 &
+SAR2_PID=$!
+ioping "$TARGET_PATH" >"$LOG_PATH"/ioping 2>&1 &
+IOPING_PID=$!
+
+# bonnie, iozone?
+
+dd if="$FAST_INPUT" of=/home/bench/idontdoblock bs=1G count=1
+for i in 2 3 4
+do
+   dd if="$FAST_INPUT" of=/home/bench/idontdoblock bs=1G count=1 oflag=append conv=notrunc 
+done
+TARGET_DEVICE=/home/bench/idontdoblock
+
+# Read
+echo reading from "$TARGET_DEVICE"
+cpt=0
+for op in read write
+do
+    if test "$action" = read; then
+	lookfor=directfullblock
+    else
+	lookfor="direct fdatasync"
+    for size in 128 1023 8k 4M 32M 1G
+    do
+	if test "$op" = read; then
+	    mkdir -p -d "$LOG_PATH/$op/$size"
+	else
+	    mkdir -p -d "$LOG_PATH/$op/$option/$size"
+	fi
+    done
+done
+mkdir -p read
+
+while test "$cpt" -lt 65536
+do
+    dd "if=$TARGET_DEVICE" of=/dev/null bs=128 count=1 skip=$cpt iflag=direct,fullblock >"$LOG_PATH"/read/128/dd-read-block-bs128-count1-directfullblock$cpt 2>&1
+    cpt=`expr $cpt + 1`
+done
+sync ; echo 3 >/proc/sys/vm/drop_caches
+cpt=0
+while test "$cpt" -lt 65536
+do
+    dd "if=$TARGET_DEVICE" of=/dev/null bs=1023 count=1 skip=$cpt iflag=direct,fullblock >"$LOG_PATH"/read/1023/dd-read-block-bs1023-count1-directfullblock$cpt 2>&1
+    cpt=`expr $cpt + 1`
+done
+sync ; echo 3 >/proc/sys/vm/drop_caches
+cpt=0
+while test "$cpt" -lt 65536
+do
+    dd "if=$TARGET_DEVICE" of=/dev/null bs=8k count=1 skip=$cpt iflag=direct,fullblock >"$LOG_PATH"/read/8k/dd-read-block-bs8k-count1-directfullblock$cpt 2>&1
+    cpt=`expr $cpt + 1`
+done
+sync ; echo 3 >/proc/sys/vm/drop_caches
+cpt=0
+while test "$cpt" -lt 256
+do
+    dd "if=$TARGET_DEVICE" of=/dev/null bs=4M count=1 skip=$cpt iflag=direct,fullblock >"$LOG_PATH"/read/4M/dd-read-block-bs4M-count1-directfullblock$cpt 2>&1
+    cpt=`expr $cpt + 1`
+done
+sync ; echo 3 >/proc/sys/vm/drop_caches
+cpt=0
+while test "$cpt" -lt 128
+do
+    dd "if=$TARGET_DEVICE" of=/dev/null bs=32M count=1 skip=$cpt iflag=direct,fullblock >"$LOG_PATH"/read/32M/dd-read-block-bs32M-count1-directfullblock$cpt 2>&1
+    cpt=`expr $cpt + 1`
+done
+sync ; echo 3 >/proc/sys/vm/drop_caches
+cpt=0
+while test "$cpt" -lt 10
+do
+    dd "if=$TARGET_DEVICE" of=/dev/null bs=1G count=1 iflag=direct,fullblock >"$LOG_PATH"/read/1G/dd-read-block-bs1G-count1-directfullblock$cpt 2>&1
+    cpt=`expr $cpt + 1`
+    sync ; echo 3 >/proc/sys/vm/drop_caches
+done
+
+# Write
+echo writing to "$TARGET_PATH"
+cpt=0
+while test "$cpt" -lt 10
+do
+    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 oflag=direct >"$LOG_PATH"/write/direct/1G/dd-write-block-bs1G-count1-direct$cpt 2>&1
+    sync ; echo 3 >/proc/sys/vm/drop_caches
+    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=1G count=1 conv=fdatasync >"$LOG_PATH"/write/fdatasync/1G/dd-write-block-bs1G-count1-fdatasync$cpt 2>&1
+    sync ; echo 3 >/proc/sys/vm/drop_caches
+    cpt=`expr $cpt + 1`
+done
+cpt=0
+while test "$cpt" -lt 128
+do
+    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=32M count=1 skip=$cpt conv=fdatasync >"$LOG_PATH"/write/fdatasync/32M/dd-write-block-bs32M-count1-fdatasync$cpt 2>&1
+    cpt=`expr $cpt + 1`
+done
+sync ; echo 3 >/proc/sys/vm/drop_caches
+cpt=0
+while test "$cpt" -lt 128
+do
+    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=32M count=1 skip=$cpt oflag=direct >"$LOG_PATH"/write/direct/32M/dd-write-block-bs32M-count1-direct$cpt 2>&1
+    cpt=`expr $cpt + 1`
+done
+sync ; echo 3 >/proc/sys/vm/drop_caches
+cpt=0
+while test "$cpt" -lt 256
+do
+    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=1 skip=$cpt conv=fdatasync >"$LOG_PATH"/write/fdatasync/4M/dd-write-block-bs4M-count1-fdatasync$cpt 2>&1
+    cpt=`expr $cpt + 1`
+done
+sync ; echo 3 >/proc/sys/vm/drop_caches
+cpt=0
+while test "$cpt" -lt 256
+do
+    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=4M count=1 skip=$cpt oflag=direct >"$LOG_PATH"/write/direct/4M/dd-write-block-bs4M-count1-direct$cpt 2>&1
+    cpt=`expr $cpt + 1`
+done
+sync ; echo 3 >/proc/sys/vm/drop_caches
+for small in 8k 1023 128
+do
+    cpt=0
+    while test "$cpt" -lt 65536
+    do
+	dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=$small count=1 skip=$cpt oflag=direct >"$LOG_PATH"/write/direct/$small/dd-write-block-bs$small-count1-direct$cpt 2>&1
+	cpt=`expr $cpt + 1`
+    done
+    sync ; echo 3 >/proc/sys/vm/drop_caches
+    cpt=0
+    while test "$cpt" -lt 65536
+    do
+	dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=$small count=1 skip=$cpt conv=fdatasync >"$LOG_PATH"/write/fdatasync/$small/dd-write-block-bs$small-count1-fdatasync$cpt 2>&1
+	cpt=`expr $cpt + 1`
+    done
+    sync ; echo 3 >/proc/sys/vm/drop_caches
+done
+rm -f "$TARGET_PATH"/dd-out
+
+ps axww | grep -E '(iotop|ioping|vmstat|sar|iostat|top) '
+exit 0
