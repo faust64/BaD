@@ -1,0 +1,98 @@
+#/bin/sh
+
+SETUP=false
+test -z "$LOG_PATH" && LOG_PATH=/var/tmp/BaD
+TMPFILE=/var/tmp/gnuplot.input.$$
+GNUPLOT_COLORS="red blue orange violet yellow black pink cyan"
+GNUPLOT_COLORS_HEX="e6194b 3cb44b ffe119 0082c8 f58231 911eb4 46f0f0 f032e6 d2f53c fabebe 008080 e6beff aa6e28 fffac8 800000 aaffc3 808000 ffd8b1 000080 808080 000000"
+
+if test "$DEVNAME"; then
+    devname="$DEVNAME"
+else
+    devname=`awk '/ ioping statistics/{print $2" ("$4}' "$LOG_PATH"/ioping`
+fi
+
+if ! test -s "$LOG_PATH"/ioping.dat; then
+    awk '/request=/' "$LOG_PATH"/ioping |
+	sed 's|.*request=\([0-9]*\) time=\([0-9\.]*\) \([^s]*[s]\)[ ]*\(.*\)$|\1 \2 \3 \4|' |
+	while read req time unit oth
+	do
+	    val=
+	    if test "$unit" = ms; then
+		if echo $time | grep '\.[0-9][0-9]' >/dev/null; then
+		    val=`echo ${time}0 | sed 's|\.\([0-9][0-9]0\)|\1|'`
+		elif echo $time | grep '\.[0-9]' >/dev/null; then
+		    val=`echo ${time}00 | sed 's|\.\([0-9]00\)|\1|'`
+		else
+		    val=${time}000
+		fi
+	    elif test "$unit" = s; then
+		if echo $time | grep '\.[0-9][0-9]' >/dev/null; then
+		    val=`echo ${time}0000 | sed 's|\.\([0-9][0-9]0000\)|\1|'`
+		elif echo $time | grep '\.[0-9]' >/dev/null; then
+		    val=`echo ${time}00000 | sed 's|\.\([0-9][0-9]00000\)|\1|'`
+		else
+		    val=${time}000000
+		fi
+	    elif test "$unit" = us; then
+		val=$time
+	    fi
+	    if test -z "$val"; then
+		echo "unsupported unit $unit, discarding data $req ($time)" >&2
+		continue
+	    fi
+	    echo $req $val
+	done >"$LOG_PATH"/ioping.dat
+fi
+gnuplot <<EOF
+set title "$devname IO ping"
+set term "png"
+set output "$LOG_PATH/ioping.png"
+plot "$LOG_PATH/ioping.dat" using 1:2 title "response time in µs" with lines lt 1
+EOF
+
+for action in read write
+do
+    if test "$action" = read; then
+	lookfor=directfullblock
+    else
+	lookfor="direct fdatasync"
+    fi
+    for option in $lookfor
+    do
+	for blocksize in 128 1023 8k 4M 32M 1G
+	do
+	    test -s "$LOG_PATH"/dd-${action}-block-bs${blocksize}-${option}.dat && continue
+	    if test "$action" = write; then
+		SRC=./$action/$option/$blocksize
+	    else
+		SRC=./$action/$blocksize
+	    fi
+	    test -d "$SRC" || continue
+	    grep -R copied "$SRC" | awk -F: '{print NR " " $2}' | while read counter line
+		do
+		    eval `echo "$line" | sed 's|.* s, \([0-9\.]*\) \([kKGgBmM]\)[B]*/s.*|speed=\1 unit=\2|'`
+		    if test "$unit" = G -o "$unit" = g; then
+			speed="`printf "%.03f\n" "$speed" | sed 's|\.||'`"
+		    elif test "$unit" = K -o "$unit" = k; then
+			speed="0.`printf "%03.0f" "$speed"`"
+		    elif test "$unit" = B; then
+			speed="0.`printf "%06.0f" "$speed"`"
+		    fi
+		    echo "$counter $speed"
+		done >"$LOG_PATH"/dd-${action}-block-bs${blocksize}-${option}.dat
+		test -s "$LOG_PATH/dd-${action}-block-bs${blocksize}-${option}.dat" || continue
+		color=`echo $GNUPLOT_COLORS | cut -d' ' -f1`
+		plotdata=`cat $TMPFILE`
+		gnuplot <<EOF
+set title "$devname $action throughputs - $option (MB/s)"
+set term "png"
+set output "$LOG_PATH/dd-${blocksize}-${action}-${option}.png"
+$plotdata
+plot "$LOG_PATH/dd-${action}-block-bs${blocksize}-${option}.dat" using 1:2 title "blocksize $blocksize" with lines lt rgb "$color"
+EOF
+	done
+    done
+done
+
+exit $?
