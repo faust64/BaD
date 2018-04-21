@@ -1,16 +1,7 @@
 #/bin/sh
 
-SETUP=false
+test -z "$DEVNAME" && DEVNAME=`awk '/ ioping statistics/{print $2" ("$4}' "$LOG_PATH"/ioping`
 test -z "$LOG_PATH" && LOG_PATH=/var/tmp/BaD
-TMPFILE=/var/tmp/gnuplot.input.$$
-GNUPLOT_COLORS="red blue orange violet yellow black pink cyan"
-GNUPLOT_COLORS_HEX="e6194b 3cb44b ffe119 0082c8 f58231 911eb4 46f0f0 f032e6 d2f53c fabebe 008080 e6beff aa6e28 fffac8 800000 aaffc3 808000 ffd8b1 000080 808080 000000"
-
-if test "$DEVNAME"; then
-    devname="$DEVNAME"
-else
-    devname=`awk '/ ioping statistics/{print $2" ("$4}' "$LOG_PATH"/ioping`
-fi
 
 if ! test -s "$LOG_PATH"/ioping.dat; then
     awk '/request=/' "$LOG_PATH"/ioping |
@@ -39,13 +30,15 @@ if ! test -s "$LOG_PATH"/ioping.dat; then
 	    fi
 	    if test -z "$val"; then
 		echo "unsupported unit $unit, discarding data $req ($time)" >&2
-		continue
+	    elif echo "$val" | grep '^[0\.]*$' >/dev/null; then
+		echo "discarding null value $req ($time)" >&2
+	    else
+		echo $req $val
 	    fi
-	    echo $req $val
 	done >"$LOG_PATH"/ioping.dat
 fi
 gnuplot <<EOF
-set title "$devname IO ping"
+set title "$DEVNAME IO ping"
 set term "png"
 set output "$LOG_PATH/ioping.png"
 plot "$LOG_PATH/ioping.dat" using 1:2 title "response time in µs" with lines lt 1
@@ -62,34 +55,58 @@ do
     do
 	for blocksize in 128 1023 8k 4M 32M 1G
 	do
-	    test -s "$LOG_PATH"/dd-${action}-block-bs${blocksize}-${option}.dat && continue
-	    if test "$action" = write; then
-		SRC=./$action/$option/$blocksize
-	    else
-		SRC=./$action/$blocksize
+	    if ! test -s "$LOG_PATH"/dd-${action}-block-bs${blocksize}-${option}.dat; then
+		if test "$action" = write; then
+		    SRC="$LOG_PATH/$action/$option/$blocksize"
+		else
+		    SRC="$LOG_PATH/$action/$blocksize"
+		fi
+		test -d "$SRC" || continue
+		grep -R copied "$SRC" | awk -F: '{print NR " " $2}' | while read counter line
+		    do
+			eval `echo "$line" | sed 's|.* s, \([0-9\.]*\) \([kKGgBmM]\)[B]*/s.*|speed=\1 unit=\2|'`
+			if test "$unit" = G -o "$unit" = g; then
+				speed="`printf "%.03f\n" "$speed" | sed 's|\.||'`"
+			elif test "$unit" = K -o "$unit" = k; then
+				speed="0.`printf "%03.0f" "$speed"`"
+			elif test "$unit" = B; then
+				speed="0.`printf "%06.0f" "$speed"`"
+			fi
+			echo "$counter $speed"
+		    done >"$LOG_PATH"/dd-${action}-block-bs${blocksize}-${option}.dat
 	    fi
-	    test -d "$SRC" || continue
-	    grep -R copied "$SRC" | awk -F: '{print NR " " $2}' | while read counter line
-		do
-		    eval `echo "$line" | sed 's|.* s, \([0-9\.]*\) \([kKGgBmM]\)[B]*/s.*|speed=\1 unit=\2|'`
-		    if test "$unit" = G -o "$unit" = g; then
-			speed="`printf "%.03f\n" "$speed" | sed 's|\.||'`"
-		    elif test "$unit" = K -o "$unit" = k; then
-			speed="0.`printf "%03.0f" "$speed"`"
-		    elif test "$unit" = B; then
-			speed="0.`printf "%06.0f" "$speed"`"
-		    fi
-		    echo "$counter $speed"
-		done >"$LOG_PATH"/dd-${action}-block-bs${blocksize}-${option}.dat
-		test -s "$LOG_PATH/dd-${action}-block-bs${blocksize}-${option}.dat" || continue
-		color=`echo $GNUPLOT_COLORS | cut -d' ' -f1`
-		plotdata=`cat $TMPFILE`
-		gnuplot <<EOF
-set title "$devname $action throughputs - $option (MB/s)"
+	    test -s "$LOG_PATH/dd-${action}-block-bs${blocksize}-${option}.dat" || continue
+	    hasplots=`awk 'END{print NR}' "$LOG_PATH/dd-${action}-block-bs${blocksize}-${option}.dat"`
+	    test -z "$hasplots" -o "$hasplots" = 0 && continue
+	    movingaverage=`expr $hasplots / 4`
+	    test "$movingaverage" -gt 1000 && movingaverage=1000
+	    gnuplot <<EOF
+n = $movingaverage
+
+do for [i=1:n] {
+    eval(sprintf("back%d=0", i))
+}
+
+shift = "("
+do for [i=n:2:-1] {
+    shift = sprintf("%sback%d = back%d, ", shift, i, i-1)
+}
+shift = shift."back1 = x)"
+sum = "(back1"
+do for [i=2:n] {
+    sum = sprintf("%s+back%d", sum, i)
+}
+sum = sum.")"
+
+samples(x) = n
+avg_n(x) = (shift_n(x), @sum/samples("$LOG_PATH/dd-${action}-block-bs${blocksize}-${option}.dat"))
+shift_n(x) = @shift
+
+set title "$DEVNAME $action throughputs - $option (MB/s)"
 set term "png"
 set output "$LOG_PATH/dd-${blocksize}-${action}-${option}.png"
-$plotdata
-plot "$LOG_PATH/dd-${action}-block-bs${blocksize}-${option}.dat" using 1:2 title "blocksize $blocksize" with lines lt rgb "$color"
+plot "$LOG_PATH/dd-${action}-block-bs${blocksize}-${option}.dat" using 1:2 title "blocksize $blocksize" with lines lt rgb "blue", \
+     "$LOG_PATH/dd-${action}-block-bs${blocksize}-${option}.dat" using 1:(avg_n(\$2)) w l lc rgb "red" lw 3 title "moving-average-$movingaverage"
 EOF
 	done
     done
