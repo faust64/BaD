@@ -122,7 +122,7 @@ do
     cpt=0
     while test "$cpt" -lt $limit
     do
-	dd "if=$TARGET_FILE" of=/dev/null bs=$blocksize count=1 skip=`expr $cpt % $rotate` iflag=direct,fullblock >"$LOG_PATH"/read/$blocksize/dd-read-block-bs{$blocksize}-count1-directfullblock$cpt 2>&1
+	dd "if=$TARGET_FILE" of=/dev/null bs=$blocksize count=1 skip=`expr $cpt % $rotate` iflag=direct,fullblock >"$LOG_PATH"/read/$blocksize/dd-read-block-bs${blocksize}-count1-directfullblock$cpt 2>&1
 	cpt=`expr $cpt + 1`
 	sync ; echo 3 >/proc/sys/vm/drop_caches
     done
