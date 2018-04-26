@@ -37,12 +37,14 @@ if ! test -s "$LOG_PATH"/ioping.dat; then
 	    fi
 	done >"$LOG_PATH"/ioping.dat
 fi
-gnuplot <<EOF
+if test -s "$LOG_PATH/ioping.dat"; then
+    gnuplot <<EOF
 set title "$DEVNAME IO ping"
 set term "png"
 set output "$LOG_PATH/ioping.png"
 plot "$LOG_PATH/ioping.dat" using 1:2 title "response time in µs" with lines lt 1
 EOF
+fi
 
 for action in read write
 do
