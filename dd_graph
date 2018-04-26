@@ -68,11 +68,11 @@ do
 		    do
 			eval `echo "$line" | sed 's|.* s, \([0-9\.]*\) \([kKGgBmM]\)[B]*/s.*|speed=\1 unit=\2|'`
 			if test "$unit" = G -o "$unit" = g; then
-				speed="`printf "%.03f\n" "$speed" | sed 's|\.||'`"
+			    speed="`printf "%.03f\n" "$speed" | sed 's|\.||'`"
 			elif test "$unit" = K -o "$unit" = k; then
-				speed="0.`printf "%03.0f" "$speed"`"
+			    speed="0.`printf "%03.0f" "$speed"`"
 			elif test "$unit" = B; then
-				speed="0.`printf "%06.0f" "$speed"`"
+			    speed="0.`printf "%06.0f" "$speed"`"
 			fi
 			echo "$counter $speed"
 		    done >"$LOG_PATH"/dd-${action}-block-bs${blocksize}-${option}.dat
