@@ -115,24 +115,24 @@ for blocksize in 128 1023 8k 4M 32M 1G
 do
     mkdir -p "$LOG_PATH/read/$blocksize" "$LOG_PATH/write/fdatasync/$blocksize" "$LOG_PATH/write/direct/$blocksize"
     case "$blocksize" in
-	*M)	limit=512 ; rotate=160 ;;
-	*G)	limit=64 ; rotate=5 ;;
-	*)	limit=65536 ; rotate=65535 ;;
+	*M)	limit=512 ;	rotate=160	;;
+	*G)	limit=64 ;	rotate=5	;;
+	*)	limit=65536 ;	rotate=65535	;;
     esac
     cpt=0
     while test "$cpt" -lt $limit
     do
-	dd "if=$TARGET_FILE" of=/dev/null bs=$blocksize count=1 skip=`expr $cpt % $rotate` iflag=direct,fullblock >"$LOG_PATH"/read/$blocksize/dd-read-block-bs${blocksize}-count1-directfullblock$cpt 2>&1
+	dd "if=$TARGET_FILE" of=/dev/null bs=$blocksize count=1 skip=`expr $cpt % $rotate` iflag=fullblock >"$LOG_PATH"/read/$blocksize/dd-read-block-bs${blocksize}-count1-fullblock$cpt 2>&1
 	cpt=`expr $cpt + 1`
 	sync ; echo 3 >/proc/sys/vm/drop_caches
     done
-    for woption in direct fdatasync
+    for woption in fdatasync
     do
 	cpt=0
 	while test "$cpt" -lt $limit
 	do
-	    test "$woption" = direct && ddopt="oflag=direct" || ddopt=conv=fdatasync
-	    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=$blocksize count=1 skip=`expr $cpt % rotate` $ddopt >"$LOG_PATH"/write/$woption/$blocksize/dd-write-block-bs$blocksize-count1-$woption$cpt 2>&1
+	    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=$blocksize count=1 skip=`expr $cpt % $rotate` conf=fdatasync >"$LOG_PATH"/write/$woption/$blocksize/dd-write-block-bs$blocksize-count1-fdatasync$cpt 2>&1
+	    cpt=`expr $cpt + 1`
 	    sync ; echo 3 >/proc/sys/vm/drop_caches
 	done
     done
