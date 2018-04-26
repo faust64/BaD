@@ -122,16 +122,25 @@ do
     cpt=0
     while test "$cpt" -lt $limit
     do
-	dd "if=$TARGET_FILE" of=/dev/null bs=$blocksize count=1 skip=`expr $cpt % $rotate` iflag=fullblock >"$LOG_PATH"/read/$blocksize/dd-read-block-bs${blocksize}-count1-fullblock$cpt 2>&1
+	if ! dd "if=$TARGET_FILE" of=/dev/null bs=$blocksize count=1 skip=`expr $cpt % $rotate` iflag=fullblock >"$LOG_PATH"/read/$blocksize/dd-read-block-bs${blocksize}-count1-fullblock$cpt 2>&1; then
+	    sync ; echo 3 >/proc/sys/vm/drop_caches
+	    echo "read bench sz=$blocksize aborted due to dd exit code" >&2
+	    break
+	fi
 	cpt=`expr $cpt + 1`
 	sync ; echo 3 >/proc/sys/vm/drop_caches
     done
-    for woption in fdatasync
+    for woption in direct fdatasync
     do
 	cpt=0
 	while test "$cpt" -lt $limit
 	do
-	    dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=$blocksize count=1 skip=`expr $cpt % $rotate` conf=fdatasync >"$LOG_PATH"/write/$woption/$blocksize/dd-write-block-bs$blocksize-count1-fdatasync$cpt 2>&1
+	    test "$woption" = direct && ddopt="oflag=direct" || ddopt=conv=fdatasync
+	    if ! dd "if=$FAST_INPUT" of="$TARGET_PATH/dd-out" bs=$blocksize count=1 skip=`expr $cpt % $rotate` $ddopt >"$LOG_PATH"/write/$woption/$blocksize/dd-write-block-bs$blocksize-count1-fdatasync$cpt 2>&1; then
+		sync ; echo 3 >/proc/sys/vm/drop_caches
+		echo "write bench opt=$woption sz=$blocksize aborted due to dd exit code" >&2
+		break
+	    fi
 	    cpt=`expr $cpt + 1`
 	    sync ; echo 3 >/proc/sys/vm/drop_caches
 	done
